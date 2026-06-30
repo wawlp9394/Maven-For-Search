@@ -1,0 +1,43 @@
+# Gradle
+.gradle/
+build/
+
+# IntelliJ Platform plugin build artifacts
+.intellijPlatform/
+bin/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Kotlin 编译器本地缓存 (Kotlin 2.x)
+.kotlin/
+
+# VSCode
+.vscode/
+
+# 环境配置脚本生成的本地目录 (setup.ps1 / setup.sh)
+# JDK 下载与解压目录、Gradle 依赖缓存目录 (用户在本仓库内运行脚本时避免误提交)
+gradle-home/
+jdk21/
+openjdk21.zip
+openjdk21.tar.gz
+
+# 通用下载临时文件
+*.zip
+*.tar.gz
+
+# Backup files
+*.bak
+*.bak-*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

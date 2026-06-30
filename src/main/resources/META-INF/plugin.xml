@@ -1,0 +1,126 @@
+<idea-plugin>
+    <!-- 插件唯一 ID (保持不变, 支持覆盖升级) -->
+    <id>com.mavensearch.plugin</id>
+
+    <!-- 插件名称 -->
+    <name>Maven For Search</name>
+
+    <!-- 插件版本 -->
+    <version>1.0.5</version>
+
+    <!-- 供应商信息 -->
+    <vendor email="" url="https://github.com/czshao">czshao</vendor>
+
+    <!-- 插件描述 (中英双语) -->
+    <description><![CDATA[
+        <h3>Maven For Search / Maven 搜索</h3>
+
+        <p><b>English</b></p>
+        <p>Search Maven Central artifacts directly from IntelliJ IDEA, with an experience similar to central.sonatype.com.</p>
+        <ul>
+            <li>Smart search: exact match first, then tokenized fuzzy match (e.g. "spring-boot-web-starter" finds "spring-boot-starter-web")</li>
+            <li>Real-time latest version via repo1.maven.org maven-metadata.xml (no index delay)</li>
+            <li>View all historical versions with filter and double-click to copy XML</li>
+            <li>Copy Maven dependency XML to clipboard</li>
+            <li>Download jar to project lib/ directory (configurable)</li>
+            <li>Add dependency to pom.xml (configurable)</li>
+            <li>Tool Window + Shortcut (Ctrl+Shift+M) + Tools menu</li>
+        </ul>
+
+        <p><b>中文说明</b></p>
+        <p>在 IntelliJ IDEA 中直接搜索 Maven Central 仓库构件, 体验接近 central.sonatype.com。</p>
+        <ul>
+            <li>智能搜索: 精确匹配优先, 分词模糊匹配补充 (例如输入 "spring-boot-web-starter" 可找到 "spring-boot-starter-web")</li>
+            <li>通过 repo1.maven.org 的 maven-metadata.xml 获取实时最新版本 (无索引延迟)</li>
+            <li>查看所有历史版本, 支持过滤, 双击复制 XML 并自动关闭弹窗</li>
+            <li>复制 Maven dependency XML 到剪贴板</li>
+            <li>下载 jar 到项目 lib/ 目录 (可配置)</li>
+            <li>添加依赖到 pom.xml (可配置)</li>
+            <li>提供 Tool Window + 快捷键 (Ctrl+Shift+M) + Tools 菜单三种入口</li>
+        </ul>
+
+        <h4>Usage / 使用方式</h4>
+        <ul>
+            <li>Tool Window: Click "Maven For Search" icon on the right toolbar / 点击右侧工具栏 "Maven For Search" 图标</li>
+            <li>Shortcut: Press <b>Ctrl+Shift+M</b> / 快捷键 <b>Ctrl+Shift+M</b></li>
+            <li>Menu: Tools → Maven For Search / 菜单: Tools → Maven For Search</li>
+        </ul>
+    ]]></description>
+
+    <!-- 变更记录 (中英双语) -->
+    <change-notes><![CDATA[
+        <b>1.0.5</b><br/>
+        - Fix: Search results no longer get cleared after closing version dialog (stale async callbacks are now discarded via generation tag) / 修复: 关闭版本弹窗后搜索结果不再被清空 (通过 generation 标记丢弃过期异步回调)<br/>
+        - Fix: Rapid typing now always shows results for the last query (debounced requests ordered by generation, no stale overwrites) / 修复: 快速连续输入时始终展示最后一次查询的结果 (按 generation 排序, 不再被旧请求覆盖)<br/>
+        - Perf: Version dialog loads faster (parallel metadata + Solr gav requests, Solr capped at 3s for timestamps) / 性能: 版本弹窗加载更快 (并行请求 metadata 和 Solr, Solr 仅 3 秒超时用于补充时间戳)<br/>
+        - Fix: Enter key now reliably triggers immediate search (bound via InputMap/ActionMap instead of keyListener) / 修复: 回车键可靠触发立即搜索 (改用 InputMap/ActionMap 绑定)<br/>
+        - Fix: Sonatype API failure now properly falls back to Solr in AUTO_FALLBACK mode (no longer swallows exceptions) / 修复: AUTO_FALLBACK 模式下 Sonatype 失败正确回退到 Solr (不再吞异常)<br/>
+        <br/>
+        <b>1.0.4</b><br/>
+        - Fix: Infinite scroll now triggers on mouse wheel (removed valueIsAdjusting filter that blocked wheel events) / 修复: 无限滚动能响应鼠标滚轮 (移除误过滤滚轮事件的 valueIsAdjusting 判断)<br/>
+        - Fix: Version list shows real publish date per version (Solr gav first, metadata fallback without date) / 修复: 版本列表恢复显示每版本真实发布日期 (Solr gav 优先, metadata 回退无日期)<br/>
+        <br/>
+        <b>1.0.3</b><br/>
+        - Feat: Version dialog double-click now copies XML, closes dialog, and shows a notification / 新增: 版本弹窗双击复制 XML 并自动关闭, 弹出"已复制到剪贴板"提示<br/>
+        - Feat: Search results use infinite scroll instead of pagination buttons / 新增: 搜索结果改为无限滚动, 移除翻页按钮<br/>
+        - Fix: Version list no longer shows incorrect same date for all versions / 修复: 版本列表不再对所有版本显示同一个错误的日期<br/>
+        - Fix: Solr paging offset now correctly calculated (page * rows) / 修复: Solr 分页偏移量计算错误<br/>
+        <br/>
+        <b>1.0.2</b><br/>
+        - Fix: Smart search now finds artifacts regardless of token order (e.g. "spring-boot-web-starter" finds "spring-boot-starter-web") / 修复: 智能搜索支持词序无关匹配<br/>
+        - Fix: Version dialog loads correctly with fallback to search API / 修复: 版本对话框加载失败时自动回退到搜索 API<br/>
+        - Feat: Dual-query strategy (exact + fuzzy) with merged deduplicated results / 新增: 双查询策略 (精确+模糊) 合并去重<br/>
+        - Feat: Version list pagination (50 per page) / 新增: 版本列表分页 (每页 50 条)<br/>
+        - Feat: Bilingual plugin description (English + Chinese) / 新增: 中英双语插件描述<br/>
+        <br/>
+        <b>1.0.1</b><br/>
+        - Fix: search results lost when metadata enrichment times out<br/>
+        - Fix: Version viewer dialog now loads versions correctly<br/>
+        - Feat: double-click search result to view all versions<br/>
+        - Feat: version filter search in version dialog<br/>
+        - Feat: Enter key to search immediately<br/>
+        - Feat: real-time latest version via maven-metadata.xml<br/>
+        - UI: icons on buttons, zebra striping, better spacing<br/>
+        <br/>
+        <b>1.0.0</b><br/>
+        Initial release / 初始版本<br/>
+    ]]></change-notes>
+
+    <!-- 兼容的 IDE 版本范围: 2024.2+ -->
+    <idea-version since-build="242"/>
+
+    <!-- 依赖的其他插件 -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <!-- 扩展点注册 -->
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Tool Window 注册 -->
+        <toolWindow id="Maven For Search"
+                    anchor="right"
+                    icon="AllIcons.Toolwindows.ToolWindowProject"
+                    factoryClass="com.mavensearch.ui.SearchToolWindowFactory"/>
+
+        <!-- 应用级配置 (Settings → Tools → Maven For Search) -->
+        <applicationConfigurable parentId="tools"
+                                 instance="com.mavensearch.config.MavenSearchConfigurable"
+                                 id="com.mavensearch.config.MavenSearchConfigurable"
+                                 displayName="Maven For Search"/>
+
+        <applicationService serviceImplementation="com.mavensearch.config.MavenSearchSettings"/>
+        <applicationService serviceImplementation="com.mavensearch.api.MavenSearchService"/>
+    </extensions>
+
+    <!-- Actions 注册 -->
+    <actions>
+        <!-- 快捷键弹出搜索对话框 -->
+        <action id="com.mavensearch.action.OpenSearchDialogAction"
+                class="com.mavensearch.action.OpenSearchDialogAction"
+                text="Maven For Search"
+                description="Open Maven For Search dialog">
+            <!-- 添加到 Tools 菜单, 方便用户找到 -->
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <!-- 快捷键: Ctrl+Shift+M -->
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift M"/>
+        </action>
+    </actions>
+</idea-plugin>
