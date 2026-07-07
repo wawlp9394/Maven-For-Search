@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.mavensearch"
-version = "1.0.5"
+version = "1.0.6"
 
 // 仓库配置: 阿里云镜像加速 + Maven Central + IntelliJ Platform 仓库
 repositories {

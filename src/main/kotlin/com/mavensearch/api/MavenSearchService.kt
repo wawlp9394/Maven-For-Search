@@ -240,15 +240,15 @@ class MavenSearchService : Disposable {
         val timeoutMs = settings.state.networkTimeoutSec * 1000
         val app = ApplicationManager.getApplication()
 
-        // 并行发起两个请求, 避免串行等待:
-        // - MavenMetadataApi (主数据源): maven-metadata.xml, 快, 实时版本列表, 无每版本时间戳
-        // - SearchMavenOrgApi (补充): Solr gav, 慢, 有每版本时间戳, 索引有数月延迟
-        val metadataFuture = app.executeOnPooledThread<List<VersionApiResponse>> {
+        // 并行发起两个请求:
+        // - MavenMetadataApi (主数据源): maven-metadata.xml, 实时版本列表 + lastUpdated
+        // - SearchMavenOrgApi (补充): Solr gav, 有每版本时间戳, 索引有数月延迟
+        val metadataFuture = app.executeOnPooledThread<MavenMetadataApi.MetadataResult?> {
             try {
-                MavenMetadataApi(timeoutMs).getVersions(groupId, artifactId, 500)
+                MavenMetadataApi(timeoutMs).getMetadata(groupId, artifactId)
             } catch (e: Exception) {
                 log.info("MavenMetadataApi failed for $groupId:$artifactId: ${e.message}")
-                emptyList()
+                null
             }
         }
         val solrFuture = app.executeOnPooledThread<Map<String, Long>> {
@@ -262,22 +262,41 @@ class MavenSearchService : Disposable {
         }
 
         // 等待主数据源 (maven-metadata.xml 通常很快, 几百毫秒)
-        val metadataVersions = try {
+        val metadata = try {
             metadataFuture.get(timeoutMs.toLong(), java.util.concurrent.TimeUnit.MILLISECONDS)
         } catch (e: Exception) {
-            emptyList()
+            null
         }
 
-        if (metadataVersions.isNotEmpty()) {
-            // Solr 仅用于补充时间戳 (次要信息), 最多再等 3 秒, 超时就放弃时间戳不阻塞用户
+        if (metadata != null && metadata.versions.isNotEmpty()) {
+            // 版本列表倒序 (最新在前)
+            val versions = metadata.versions.reversed()
+
+            // Solr 仅用于补充时间戳 (次要信息), 最多再等 3 秒
             val solrTimestamps = try {
                 solrFuture.get(3000L, java.util.concurrent.TimeUnit.MILLISECONDS)
             } catch (e: Exception) {
                 solrFuture.cancel(true)
                 emptyMap()
             }
-            return metadataVersions.map { v ->
-                VersionInfo(v.version, solrTimestamps[v.version] ?: 0L)
+
+            // 第一阶段合并: Solr 时间戳优先; 最新版本用 lastUpdated (maven-metadata.xml 全局最后更新时间, 等于最新版本发布时间)
+            val firstPass = versions.mapIndexed { index, v ->
+                val ts = solrTimestamps[v] ?: if (index == 0) metadata.lastUpdated else 0L
+                VersionInfo(v, ts)
+            }
+
+            // 第二阶段: 对仍缺失时间戳的版本 (通常是 Solr 索引延迟期内的新版本),
+            // 并行 HEAD 请求 Maven Central 文件的 Last-Modified 补充时间戳
+            val missingVersions = firstPass.filter { it.timestamp == 0L }.map { it.version }
+            if (missingVersions.isEmpty()) return firstPass
+
+            val headTimestamps = fetchMissingTimestamps(groupId, artifactId, missingVersions, timeoutMs)
+            return firstPass.map { v ->
+                if (v.timestamp == 0L) {
+                    val headTs = headTimestamps[v.version] ?: 0L
+                    if (headTs > 0L) VersionInfo(v.version, headTs) else v
+                } else v
             }
         }
 
@@ -289,6 +308,58 @@ class MavenSearchService : Disposable {
         } catch (e: Exception) {
             log.warn("Solr gav also failed for $groupId:$artifactId: ${e.message}")
             emptyList()
+        }
+    }
+
+    /**
+     * 对缺失时间戳的版本, 并行 HEAD 请求 Maven Central 文件的 Last-Modified 补充时间戳。
+     *
+     * Solr gav 索引有数月延迟, 最新版本 (如 hutool-all 5.8.37~5.8.46) 在 Solr 中没有时间戳。
+     * 这里直接请求 Maven Central 仓库文件的 Last-Modified HTTP 头 (实时, 无延迟) 补全。
+     * 总超时 3 秒, 超时后已拿到的填充, 未拿到的留 0 (不显示日期)。
+     */
+    private fun fetchMissingTimestamps(
+        groupId: String,
+        artifactId: String,
+        versions: List<String>,
+        timeoutMs: Int
+    ): Map<String, Long> {
+        if (versions.isEmpty()) return emptyMap()
+        val groupPath = groupId.replace('.', '/')
+        val perRequestTimeout = minOf(timeoutMs, 3000)
+
+        val futures = versions.map { version ->
+            java.util.concurrent.CompletableFuture.supplyAsync {
+                val url = "https://repo1.maven.org/maven2/$groupPath/$artifactId/$version/$artifactId-$version.pom"
+                try {
+                    val conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                        requestMethod = "HEAD"
+                        connectTimeout = perRequestTimeout
+                        readTimeout = perRequestTimeout
+                        instanceFollowRedirects = true
+                    }
+                    try {
+                        // lastModified 触发实际 HTTP 连接, 可能抛 IOException
+                        version to conn.lastModified
+                    } finally {
+                        conn.disconnect()
+                    }
+                } catch (e: Exception) {
+                    version to 0L
+                }
+            }
+        }
+
+        return try {
+            java.util.concurrent.CompletableFuture.allOf(*futures.toTypedArray())
+                .get(3, java.util.concurrent.TimeUnit.SECONDS)
+            futures.map { it.get() }.filter { it.second > 0L }.toMap()
+        } catch (e: Exception) {
+            // 超时: 取消未完成的请求, 收集已完成的 future 结果
+            futures.forEach { it.cancel(true) }
+            futures.filter { !it.isCancelled && it.isDone }.mapNotNull {
+                try { it.get() } catch (e: Exception) { null }
+            }.filter { it.second > 0L }.toMap()
         }
     }
 

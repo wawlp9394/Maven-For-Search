@@ -6,7 +6,7 @@
     <name>Maven For Search</name>
 
     <!-- 插件版本 -->
-    <version>1.0.5</version>
+    <version>1.0.6</version>
 
     <!-- 供应商信息 -->
     <vendor email="" url="https://github.com/czshao">czshao</vendor>
@@ -49,6 +49,9 @@
 
     <!-- 变更记录 (中英双语) -->
     <change-notes><![CDATA[
+        <b>1.0.6</b><br/>
+        - Fix: Version dialog now shows publish date for all versions, including latest ones missing from Solr index (parallel HEAD requests to Maven Central for Last-Modified timestamps) / 修复: 版本弹窗所有版本都显示发布日期, 包括 Solr 索引缺失的最新版本 (并行 HEAD 请求 Maven Central 补充 Last-Modified 时间戳)<br/>
+        <br/>
         <b>1.0.5</b><br/>
         - Fix: Search results no longer get cleared after closing version dialog (stale async callbacks are now discarded via generation tag) / 修复: 关闭版本弹窗后搜索结果不再被清空 (通过 generation 标记丢弃过期异步回调)<br/>
         - Fix: Rapid typing now always shows results for the last query (debounced requests ordered by generation, no stale overwrites) / 修复: 快速连续输入时始终展示最后一次查询的结果 (按 generation 排序, 不再被旧请求覆盖)<br/>
