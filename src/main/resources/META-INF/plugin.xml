@@ -51,6 +51,8 @@
     <change-notes><![CDATA[
         <b>1.0.6</b><br/>
         - Fix: Version dialog now shows publish date for all versions, including latest ones missing from Solr index (parallel HEAD requests to Maven Central for Last-Modified timestamps) / 修复: 版本弹窗所有版本都显示发布日期, 包括 Solr 索引缺失的最新版本 (并行 HEAD 请求 Maven Central 补充 Last-Modified 时间戳)<br/>
+        - Fix: Resource leak in HEAD requests (HttpURLConnection.disconnect moved to finally block) / 修复: HEAD 请求资源泄漏 (HttpURLConnection.disconnect 移入 finally 块)<br/>
+        - Fix: Cancel pending CompletableFuture on timeout to avoid wasted background work / 修复: 超时后取消未完成的 CompletableFuture, 避免资源浪费<br/>
         <br/>
         <b>1.0.5</b><br/>
         - Fix: Search results no longer get cleared after closing version dialog (stale async callbacks are now discarded via generation tag) / 修复: 关闭版本弹窗后搜索结果不再被清空 (通过 generation 标记丢弃过期异步回调)<br/>
