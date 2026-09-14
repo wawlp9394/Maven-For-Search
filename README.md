@@ -157,11 +157,68 @@ Maven-For-Search/
 │   └── setup.bat                 # Windows 批处理入口
 ├── docs/                         # 文档
 │   ├── REQUIREMENTS.md           # 需求文档
+│   ├── DEVELOPMENT.md            # 开发流程规范（分支模型、发布流程）
 │   └── superpowers/specs/        # 设计快照
 ├── LICENSE
 ├── .gitignore
 └── README.md
 ```
+
+## Git 与发布流程
+
+完整规范见 [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md)，以下为速查。
+
+### 分支模型
+
+- `main`：稳定发布分支，每次 Release 对应 main 上的一个 tag，只接受来自 `dev` 的合并
+- `dev`：日常开发分支，所有新功能 / bugfix 在此开发，测试通过后才合并到 main
+
+### 基本操作
+
+```bash
+# 拉取项目
+git clone https://github.com/wawlp9394/Maven-For-Search.git
+git pull origin dev                      # 拉取远端更新（先确认当前分支）
+
+# 创建 / 切换分支
+git checkout -b dev origin/main          # 首次从 main 创建 dev
+git switch dev                           # 切换分支
+
+# 提交
+git add <文件>
+git commit -m "feat: 简要描述变更"       # 前缀: feat/fix/docs/refactor/test/chore
+git push origin dev
+
+# 合并分支（dev -> main，测试通过后）
+git checkout main && git pull origin main
+git merge --no-ff dev -m "chore: merge dev -> main (v1.0.x)"
+
+# 创建标签（合并 main 后）
+git tag -a v1.0.7 -m "v1.0.7: 发布说明"
+git push origin v1.0.7
+```
+
+### 打包
+
+```bash
+./gradlew.bat buildPlugin                # Windows（含测试）
+./gradlew.bat buildPlugin -x test        # 跳过测试
+# 产物: build/distributions/maven-for-search-<version>.zip
+```
+
+### 推送 Release
+
+```bash
+# 方式 A: GitHub CLI（推荐）
+gh release create v1.0.7 build/distributions/maven-for-search-1.0.7.zip \
+  --title "v1.0.7" --notes "## 变更说明"
+
+# 方式 B: 无 gh CLI 时，用 GCM 存储的凭据调 GitHub API（详见 DEVELOPMENT.md 第 3 节）
+```
+
+### 一次完整迭代
+
+1. `git checkout dev` 开发并提交 → 2. `./gradlew.bat test buildPlugin` 验证 → 3. 合并到 `main`（`--no-ff`）→ 4. 同步版本号与文档 → 5. 打 tag 并推送 → 6. 创建 Release 上传 zip
 
 ## 版本历史
 
