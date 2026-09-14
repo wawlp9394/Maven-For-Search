@@ -18,7 +18,6 @@ import com.mavensearch.model.SearchResult
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.event.ActionEvent
-import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -48,16 +47,13 @@ class SearchPanel(private val project: Project) {
 
     private val searchField = JBTextField().apply {
         emptyText.text = "Search Maven Central (e.g. spring-core, org.springframework:spring-core)..."
-        addKeyListener(object : KeyAdapter() {
-            override fun keyReleased(e: KeyEvent) {
-                // Enter 由 InputMap 绑定处理 (见下), 这里只处理其他键的防抖搜索
-                if (e.keyCode != KeyEvent.VK_ENTER) {
-                    performSearchWithDebounce()
-                }
-            }
-        })
+        // IME 友好的文本变化触发 (替代旧 KeyListener 方案, 修复中文输入法搜索 bug):
+        // 合成中的半成品文本不触发搜索, 候选词提交后立即用最终文本触发防抖搜索
+        installImeAwareTextTrigger(this) { performSearchWithDebounce() }
         // 用 InputMap/ActionMap 绑定 Enter, 比 keyListener 更可靠
-        // (JBTextField 的 keyListener 可能被默认 LAF 行为拦截)
+        // (JBTextField 的 keyListener 可能被默认 LAF 行为拦截)。
+        // 注: 合成中 Enter 被 IME 消费用于提交候选词, 不会走到这里;
+        //     能触发本 action 说明 Enter 未被 IME 拦截, 文本已是最终状态, 可立即搜索。
         val enterKey = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0)
         getInputMap(JComponent.WHEN_FOCUSED).put(enterKey, "performSearch")
         actionMap.put("performSearch", object : javax.swing.AbstractAction() {

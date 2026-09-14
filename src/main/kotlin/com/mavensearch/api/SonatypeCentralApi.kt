@@ -144,7 +144,16 @@ class SonatypeCentralApi(
                 '\n' -> sb.append("\\n")
                 '\r' -> sb.append("\\r")
                 '\t' -> sb.append("\\t")
-                else -> sb.append(c)
+                '\b' -> sb.append("\\b")
+                '\u000C' -> sb.append("\\f")
+                else -> {
+                    // 其他 ASCII 控制字符 (< 0x20) 必须转义为 \uXXXX, 否则生成非法 JSON
+                    if (c < ' ') {
+                        sb.append("\\u").append(String.format("%04x", c.code))
+                    } else {
+                        sb.append(c)
+                    }
+                }
             }
         }
         return sb.toString()

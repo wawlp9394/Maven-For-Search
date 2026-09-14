@@ -10,7 +10,7 @@
 
 ## 功能特性
 
-- **智能搜索**：精确匹配优先 + 分词模糊匹配（输入 `spring-boot-web-starter` 可找到 `spring-boot-starter-web`），大小写不敏感，300ms 防抖
+- **智能搜索**：精确匹配优先 + 分词模糊匹配（输入 `spring-boot-web-starter` 可找到 `spring-boot-starter-web`），大小写不敏感，300ms 防抖，支持中文输入法（IME 合成结束后自动触发搜索，无需重输英文）
 - **无限滚动**：滚动到底部自动加载下一页，无需翻页按钮
 - **版本查看**：双击搜索结果查看所有历史版本，支持过滤；Solr gav 优先（每版本真实发布日期），metadata 回退（全量实时无日期），HEAD 请求补充（Solr 索引缺失的最新版本实时日期）
 - **双击复制 XML**：版本列表双击即复制 `dependency` XML 到剪贴板并自动关闭弹窗
@@ -74,7 +74,7 @@ bash <仓库路径>/scripts/setup.sh
 ./gradlew buildPlugin -x test          # Linux/macOS
 ```
 
-构建产物位于 `build/distributions/`（文件名 `maven-for-search-1.0.6.zip`），可直接安装到 IntelliJ IDEA。
+构建产物位于 `build/distributions/`（文件名 `maven-for-search-1.0.7.zip`），可直接安装到 IntelliJ IDEA。
 
 > **注意**：首次构建会下载 IntelliJ Platform SDK（约 800MB），无国内镜像，请耐心等待。所有依赖缓存会落到 `GRADLE_USER_HOME` 指定的非系统盘路径。
 
@@ -82,7 +82,7 @@ bash <仓库路径>/scripts/setup.sh
 
 1. 启动 IntelliJ IDEA → `File` → `Settings` → `Plugins`
 2. 点击齿轮图标 → `Install Plugin from Disk...`
-3. 选择 `build/distributions/maven-for-search-1.0.6.zip`
+3. 选择 `build/distributions/maven-for-search-1.0.7.zip`
 4. 重启 IDE
 
 ## 使用说明
@@ -167,6 +167,7 @@ Maven-For-Search/
 
 | 版本    | 主要变更                                                        |
 | ----- | ----------------------------------------------------------- |
+| 1.0.7 | 修复中文输入法导致搜索异常（IME 合成结束触发搜索）、版本过滤框 IME 兼容、精确匹配大小写不敏感、JSON 转义补全 |
 | 1.0.6 | 版本弹窗所有版本显示发布日期（HEAD 请求补充 Solr 索引缺失的最新版本时间戳）、资源泄漏修复、超时取消未完成请求 |
 | 1.0.5 | 修复关闭版本弹窗后结果被清空、快速输入结果错乱、版本弹窗加载慢、回车搜索不可靠、Sonatype 失败不回退 Solr |
 | 1.0.4 | 修复无限滚动不触发（滚轮事件过滤 bug）、版本时间显示恢复（Solr gav 优先）                 |

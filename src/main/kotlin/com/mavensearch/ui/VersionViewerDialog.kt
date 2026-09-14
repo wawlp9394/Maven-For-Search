@@ -21,8 +21,6 @@ import com.mavensearch.model.VersionInfo
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
-import java.awt.event.KeyAdapter
-import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.DefaultListModel
@@ -64,11 +62,8 @@ class VersionViewerDialog(
 
     private val filterField = JBTextField().apply {
         emptyText.text = "Filter versions (e.g. 5.8, 2.x, 3.5.3) - 在全部版本中实时过滤"
-        addKeyListener(object : KeyAdapter() {
-            override fun keyReleased(e: KeyEvent) {
-                applyFilter()
-            }
-        })
+        // 同 SearchPanel 搜索框: IME 友好的文本变化触发, 修复中文输入法过滤 bug
+        installImeAwareTextTrigger(this) { applyFilter() }
     }
 
     private val versionList = JBList(listModel).apply {

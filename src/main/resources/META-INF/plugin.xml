@@ -6,7 +6,7 @@
     <name>Maven For Search</name>
 
     <!-- 插件版本 -->
-    <version>1.0.6</version>
+    <version>1.0.7</version>
 
     <!-- 供应商信息 -->
     <vendor email="" url="https://github.com/czshao">czshao</vendor>
@@ -49,6 +49,12 @@
 
     <!-- 变更记录 (中英双语) -->
     <change-notes><![CDATA[
+        <b>1.0.7</b><br/>
+        - Fix: Chinese/Japanese IME input no longer breaks search — search now triggers on committed text via DocumentListener + InputMethodListener instead of KeyListener, which missed IME commits and searched half-composed pinyin / 修复: 中文输入法不再导致搜索异常 (改用 DocumentListener + IME 提交事件触发搜索, 修复原先 KeyListener 漏掉候选词提交、搜索半成品拼音文本的问题; 无需再重输英文)<br/>
+        - Fix: Version filter box in version dialog now IME-safe / 修复: 版本弹窗过滤框同样支持中文输入法<br/>
+        - Perf: Exact-match reordering is now case-insensitive (typing "SPRING-CORE" also pins spring-core first) / 优化: 精确匹配重排序改为大小写不敏感<br/>
+        - Fix: escapeJson now handles all control chars (\b, \f, &lt;0x20) to avoid malformed request bodies / 修复: JSON 转义补全全部控制字符, 避免生成非法请求体<br/>
+        <br/>
         <b>1.0.6</b><br/>
         - Fix: Version dialog now shows publish date for all versions, including latest ones missing from Solr index (parallel HEAD requests to Maven Central for Last-Modified timestamps) / 修复: 版本弹窗所有版本都显示发布日期, 包括 Solr 索引缺失的最新版本 (并行 HEAD 请求 Maven Central 补充 Last-Modified 时间戳)<br/>
         - Fix: Resource leak in HEAD requests (HttpURLConnection.disconnect moved to finally block) / 修复: HEAD 请求资源泄漏 (HttpURLConnection.disconnect 移入 finally 块)<br/>

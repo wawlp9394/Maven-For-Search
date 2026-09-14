@@ -168,7 +168,9 @@ class MavenSearchService : Disposable {
         // 支持 "groupId:artifactId" 坐标查询: 只取冒号后的 artifactId 部分
         val targetArtifactId = trimmed.substringAfter(':').trim()
         if (targetArtifactId.isEmpty()) return results
-        val (exact, others) = results.partition { it.artifact.artifactId == targetArtifactId }
+        // 大小写不敏感比较: 用户输入 "SPRING-CORE" 时也能把 spring-core 排到最前
+        val target = targetArtifactId.lowercase()
+        val (exact, others) = results.partition { it.artifact.artifactId.lowercase() == target }
         return if (exact.isEmpty()) results else exact + others
     }
 
