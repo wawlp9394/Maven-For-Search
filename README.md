@@ -33,7 +33,7 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/czshao/Maven-For-Search.git
+git clone https://github.com/wawlp9394/Maven-For-Search.git
 cd Maven-For-Search
 ```
 
@@ -209,16 +209,15 @@ git push origin v1.0.7
 ### 推送 Release
 
 ```bash
-# 方式 A: GitHub CLI（推荐）
-gh release create v1.0.7 build/distributions/maven-for-search-1.0.7.zip \
-  --title "v1.0.7" --notes "## 变更说明"
+# 方式 A: GitHub CLI（推荐; 发布说明用 --notes-file 传入, 避免命令行换行符问题）
+gh release create v1.0.7 build/distributions/maven-for-search-1.0.7.zip --title "v1.0.7" --notes-file release-notes.md
 
 # 方式 B: 无 gh CLI 时，用 GCM 存储的凭据调 GitHub API（详见 DEVELOPMENT.md 第 3 节）
 ```
 
 ### 一次完整迭代
 
-1. `git checkout dev` 开发并提交 → 2. `./gradlew.bat test buildPlugin` 验证 → 3. 合并到 `main`（`--no-ff`）→ 4. 同步版本号与文档 → 5. 打 tag 并推送 → 6. 创建 Release 上传 zip
+1. `git checkout dev` 开发并提交 → 2. `./gradlew.bat test buildPlugin` 验证 → 3. 在 dev 同步版本号与文档 → 4. 合并到 `main`（`--no-ff`）→ 5. 打 tag 并推送 → 6. 创建 Release 上传 zip
 
 ## 版本历史
 
