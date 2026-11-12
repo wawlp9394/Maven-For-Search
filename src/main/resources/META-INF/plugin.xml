@@ -6,7 +6,7 @@
     <name>Maven For Search</name>
 
     <!-- 插件版本 -->
-    <version>1.0.7</version>
+    <version>1.0.8</version>
 
     <!-- 供应商信息 -->
     <vendor email="" url="https://github.com/czshao">czshao</vendor>
@@ -49,6 +49,10 @@
 
     <!-- 变更记录 (中英双语) -->
     <change-notes><![CDATA[
+        <b>1.0.8</b><br/>
+        - Fix: Search returns no results in recent IDE versions — central.sonatype.com now enforces Cloudflare bot protection and blocks the plugin's minimal request headers with HTTP 403; the browse API request now sends a full browser User-Agent plus sec-fetch-* headers to pass the check (verified working) / 修复: 搜索无结果 — central.sonatype.com 新启用了 Cloudflare Bot 防护, 插件原先的简化请求头被拦截返回 403; browse API 请求改为携带完整浏览器 User-Agent 与 sec-fetch-* 系列头以通过检测 (已实测验证)<br/>
+        - If the browse API is still blocked, AUTO_FALLBACK now correctly falls back to search.maven.org Solr / 若 browse API 仍被拦截, AUTO_FALLBACK 会正确回退到 search.maven.org Solr<br/>
+        <br/>
         <b>1.0.7</b><br/>
         - Fix: Chinese/Japanese IME input no longer breaks search — search now triggers on committed text via DocumentListener + InputMethodListener instead of KeyListener, which missed IME commits and searched half-composed pinyin / 修复: 中文输入法不再导致搜索异常 (改用 DocumentListener + IME 提交事件触发搜索, 修复原先 KeyListener 漏掉候选词提交、搜索半成品拼音文本的问题; 无需再重输英文)<br/>
         - Fix: Version filter box in version dialog now IME-safe / 修复: 版本弹窗过滤框同样支持中文输入法<br/>

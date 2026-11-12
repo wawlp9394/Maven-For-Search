@@ -53,19 +53,9 @@ git push origin dev
 - [ ] `buildPlugin` BUILD SUCCESSFUL
 - [ ] 将 `build/distributions/*.zip` 安装到 IDEA 实测核心功能（搜索 / 中文输入法 / 版本弹窗 / 复制 XML）
 
-### 第 3 步：合并到 main
+### 第 3 步：同步版本号与文档（在 dev 分支上完成）
 
-```bash
-git checkout main
-git pull origin main
-git merge --no-ff dev -m "chore: merge dev -> main (v1.0.x)"
-```
-
-> 使用 `--no-ff` 保留合并记录，便于回溯每次发布包含的迭代。
-
-### 第 4 步：同步版本号与文档（合并后、打 tag 前）
-
-一次发布需同步修改以下位置（以 1.0.7 为例）：
+一次发布需在 **dev 分支**同步修改以下位置（以 1.0.7 为例）：
 
 | 文件                            | 修改内容                                  |
 | ----------------------------- | ------------------------------------- |
@@ -76,9 +66,21 @@ git merge --no-ff dev -m "chore: merge dev -> main (v1.0.x)"
 | `docs/REQUIREMENTS.md`        | 版本历史表追加一行                             |
 
 ```bash
+# 仍在 dev 分支
 git add -u
 git commit -m "chore: bump version to 1.0.7"
+git push origin dev
 ```
+
+### 第 4 步：合并到 main
+
+```bash
+git checkout main
+git pull origin main
+git merge --no-ff dev -m "chore: merge dev -> main (v1.0.x)"
+```
+
+> 使用 `--no-ff` 保留合并记录，便于回溯每次发布包含的迭代。main 上只允许来自 dev 的合并与 tag，不直接提交改动。
 
 ### 第 5 步：推送 main 并打 tag
 
@@ -102,10 +104,12 @@ git push origin v1.0.7
 
 ```bash
 gh auth login                      # 首次登录
-gh release create v1.0.7 build/distributions/maven-for-search-1.0.7.zip \
-  --title "v1.0.7 - 修复中文输入法搜索 bug" \
-  --notes "## 修复\n- ...变更说明..."
+
+# 发布说明先写入文件 (避免命令行 \n 不被解析为换行)
+gh release create v1.0.7 build/distributions/maven-for-search-1.0.7.zip --title "v1.0.7 - 修复中文输入法搜索 bug" --notes-file release-notes.md
 ```
+
+> Windows PowerShell 不支持 `\` 续行，请写成一行或用反引号 `` ` `` 续行。
 
 ### 方式 B：无 gh CLI（PowerShell + GitHub API）
 
@@ -116,7 +120,7 @@ gh release create v1.0.7 build/distributions/maven-for-search-1.0.7.zip \
 $cred = @("protocol=https", "host=github.com", "") | git credential fill
 $token = ($cred | Where-Object { $_ -like 'password=*' }).Substring(9)
 $headers = @{ Authorization = "Bearer $token"; 'User-Agent' = 'maven-search-release' }
-$api = 'https://api.github.com/repos/<owner>/Maven-For-Search'
+$api = 'https://api.github.com/repos/wawlp9394/Maven-For-Search'
 
 # 2) 创建 release（body 为 Markdown 发布说明）
 $rel = Invoke-RestMethod -Uri "$api/releases" -Method Post -Headers $headers `
