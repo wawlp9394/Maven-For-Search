@@ -74,7 +74,7 @@ bash <仓库路径>/scripts/setup.sh
 ./gradlew buildPlugin -x test          # Linux/macOS
 ```
 
-构建产物位于 `build/distributions/`（文件名 `maven-for-search-1.0.7.zip`），可直接安装到 IntelliJ IDEA。
+构建产物位于 `build/distributions/`（文件名 `maven-for-search-1.0.8.zip`），可直接安装到 IntelliJ IDEA。
 
 > **注意**：首次构建会下载 IntelliJ Platform SDK（约 800MB），无国内镜像，请耐心等待。所有依赖缓存会落到 `GRADLE_USER_HOME` 指定的非系统盘路径。
 
@@ -82,7 +82,7 @@ bash <仓库路径>/scripts/setup.sh
 
 1. 启动 IntelliJ IDEA → `File` → `Settings` → `Plugins`
 2. 点击齿轮图标 → `Install Plugin from Disk...`
-3. 选择 `build/distributions/maven-for-search-1.0.7.zip`
+3. 选择 `build/distributions/maven-for-search-1.0.8.zip`
 4. 重启 IDE
 
 ## 使用说明
@@ -125,7 +125,7 @@ bash <仓库路径>/scripts/setup.sh
 
 | API                                   | 用途                                           | 特点                                    |
 | ------------------------------------- | -------------------------------------------- | ------------------------------------- |
-| central.sonatype.com (browse API)     | 搜索构件（AUTO\_FALLBACK 主源）                      | 数据实时，结果稳定，与 central.sonatype.com 页面一致 |
+| central.sonatype.com (browse API)     | 搜索构件（AUTO\_FALLBACK 主源）                      | 数据实时，结果稳定，与 central.sonatype.com 页面一致；已启用 Cloudflare Bot 防护，需携带完整浏览器请求头 |
 | search.maven.org Solr (`core=search`) | 搜索构件（AUTO\_FALLBACK 回退 / `MAVEN_CENTRAL` 强制） | 官方索引，有数月延迟                            |
 | search.maven.org Solr (`core=gav`)    | 版本列表                                         | 每版本独立时间戳，有延迟                          |
 | repo1.maven.org `maven-metadata.xml`  | 版本列表回退                                       | 全量实时，无每版本时间戳                          |
@@ -223,6 +223,7 @@ gh release create v1.0.7 build/distributions/maven-for-search-1.0.7.zip --title 
 
 | 版本    | 主要变更                                                        |
 | ----- | ----------------------------------------------------------- |
+| 1.0.8 | 修复搜索无结果（central.sonatype.com 启用 Cloudflare Bot 防护拦截简化请求头，改用完整浏览器 UA + sec-fetch-* 头通过检测） |
 | 1.0.7 | 修复中文输入法导致搜索异常（IME 合成结束触发搜索）、版本过滤框 IME 兼容、精确匹配大小写不敏感、JSON 转义补全 |
 | 1.0.6 | 版本弹窗所有版本显示发布日期（HEAD 请求补充 Solr 索引缺失的最新版本时间戳）、资源泄漏修复、超时取消未完成请求 |
 | 1.0.5 | 修复关闭版本弹窗后结果被清空、快速输入结果错乱、版本弹窗加载慢、回车搜索不可靠、Sonatype 失败不回退 Solr |

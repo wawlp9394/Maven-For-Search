@@ -29,6 +29,13 @@ class SonatypeCentralApi(
 
     companion object {
         private const val BROWSE_URL = "https://central.sonatype.com/api/internal/browse/components"
+
+        /**
+         * 完整浏览器 User-Agent
+         * Cloudflare 会拦截不完整/非浏览器 UA ("Mozilla/5.0"), 必须使用真实浏览器完整 UA
+         */
+        private const val BROWSER_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     }
 
     /**
@@ -66,16 +73,26 @@ class SonatypeCentralApi(
      *
      * 使用原生 HttpURLConnection (而非 IntelliJ HttpRequests), 因为后者对 POST body 支持有限。
      * 连接/读取超时由 [timeoutMs] 控制, 避免网络慢导致 UI 卡死。
+     *
+     * 重要 (v1.0.8): central.sonatype.com 已启用 Cloudflare Bot 防护,
+     * 简化的请求头 (如 "User-Agent: Mozilla/5.0") 会被直接拦截返回 HTTP 403。
+     * 必须携带完整浏览器 UA + sec-fetch-* 系列头才能通过检测 (实测验证)。
+     * 若仍被拦截, 异常向上抛出, 由 AUTO_FALLBACK 回退到 search.maven.org Solr。
      */
     private fun postJson(urlStr: String, body: ByteArray): String {
         val connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = timeoutMs
             readTimeout = timeoutMs
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "Mozilla/5.0")
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "*/*")
+            setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+            setRequestProperty("User-Agent", BROWSER_USER_AGENT)
             setRequestProperty("Origin", "https://central.sonatype.com")
+            setRequestProperty("Referer", "https://central.sonatype.com/")
+            setRequestProperty("Sec-Fetch-Dest", "empty")
+            setRequestProperty("Sec-Fetch-Mode", "cors")
+            setRequestProperty("Sec-Fetch-Site", "same-origin")
             doOutput = true
         }
         try {

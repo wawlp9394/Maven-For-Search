@@ -46,4 +46,4 @@ logs/
 .gradle-home/
 
 # AI agent 本地指南 (不纳入版本管理)
-AGENT.md
+AGENTS.md
