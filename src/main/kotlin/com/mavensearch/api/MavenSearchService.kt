@@ -7,7 +7,6 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.Disposable
 import com.intellij.util.Alarm
 import com.mavensearch.config.MavenSearchSettings
-import com.mavensearch.config.SearchSource
 import com.mavensearch.model.SearchResult
 import com.mavensearch.model.VersionInfo
 import org.jetbrains.annotations.TestOnly
@@ -16,9 +15,8 @@ import org.jetbrains.annotations.TestOnly
  * Maven 搜索服务 (统一入口)
  *
  * 职责:
- * - 根据配置选择 API 源
+ * - 搜索固定使用 central.sonatype.com browse API (唯一实时搜索源, v1.0.9 起移除 Solr 搜索源与回退机制)
  * - 处理防抖 (通过 Alarm)
- * - 自动回退 (主 API 失败时切换备用)
  * - 后台线程执行网络请求 (使用 ApplicationManager.executeOnPooledThread)
  */
 @Service
@@ -108,52 +106,71 @@ class MavenSearchService : Disposable {
                 return@executeOnPooledThread
             }
             try {
-                val results = performSearch(query, page)
+                val results = performSearchWithRetry(query, page)
                 invokeOnEdt { onResult(results) }
             } catch (e: Exception) {
                 log.warn("Search failed for query: $query", e)
+                // 错误消息带唯一搜索源名称 + 分类提示, 让用户明确知道是哪个源出问题、该怎么应对
+                // (不回退换源, 直接报错)
                 val msg = e.message ?: "Search failed"
-                invokeOnEdt { onError(msg) }
+                invokeOnEdt { onError("[central.sonatype.com] $msg${buildErrorHint(msg)}") }
             }
+        }
+    }
+
+    /**
+     * 带一次重试的搜索。
+     *
+     * "搜索不到"的主因是国内网络抖动 (实测延迟 1~7 秒波动, 偶发超时/连接失败),
+     * 对同一搜索源自动重试一次可显著提高成功率。这是网络层重试, 不是源回退 —
+     * 重试仍走同一个源 (Sonatype), 两次都失败才向上报错。
+     */
+    private fun performSearchWithRetry(query: String, page: Int): List<SearchResult> {
+        return try {
+            performSearch(query, page)
+        } catch (e: Exception) {
+            log.info("Search failed, retrying once on the same source: ${e.message}")
+            performSearch(query, page)
+        }
+    }
+
+    /**
+     * 根据错误信息生成可操作的应对提示。
+     *
+     * @param rawMsg 原始错误消息 (如 "HTTP 403 from ..." / timeout 相关)
+     * @return 附加提示 (空格开头), 无匹配场景返回空字符串
+     */
+    private fun buildErrorHint(rawMsg: String): String {
+        return when {
+            // 连接/读取超时: 网络抖动或代理问题, 引导用户调大超时
+            rawMsg.contains("timeout", ignoreCase = true) ||
+                    rawMsg.contains("timed out", ignoreCase = true) ->
+                " (network timeout — check your network/proxy or increase Network timeout in Settings)"
+            // 403: Cloudflare 防护拦截, 提示可能需要更新浏览器请求头
+            rawMsg.contains("HTTP 403") ->
+                " (blocked by Cloudflare — browser headers may need updating)"
+            // 5xx: 服务端问题, 稍后重试即可
+            rawMsg.contains("HTTP 5") ->
+                " (server-side issue, try again later)"
+            else -> ""
         }
     }
 
     private fun performSearch(query: String, page: Int): List<SearchResult> {
         val pageSize = settings.state.pageSize
         val timeoutMs = settings.state.networkTimeoutSec * 1000
-        val source = settings.searchSource
 
-        // AUTO_FALLBACK: 优先用 Sonatype browse API (结果稳定、数据实时、与 central.sonatype.com 一致)
-        // 失败时回退到 search.maven.org Solr (兼容性后备)
-        val (results, usedApi) = when (source) {
-            SearchSource.MAVEN_CENTRAL -> {
-                trySearch(SearchMavenOrgApi(timeoutMs), query, page, pageSize) to "solr"
-            }
-            SearchSource.SONATYPE_CENTRAL -> {
-                trySearch(SonatypeCentralApi(timeoutMs), query, page, pageSize) to "sonatype"
-            }
-            SearchSource.AUTO_FALLBACK -> {
-                try {
-                    trySearch(SonatypeCentralApi(timeoutMs), query, page, pageSize) to "sonatype"
-                } catch (e: Exception) {
-                    log.info("Sonatype API failed, falling back to Maven Central Solr: ${e.message}")
-                    trySearch(SearchMavenOrgApi(timeoutMs), query, page, pageSize) to "solr"
-                }
-            }
-        }
+        // 唯一搜索源: Sonatype browse API (数据实时, 与 central.sonatype.com 官网搜索一致)。
+        // v1.0.9 起移除 search.maven.org Solr 搜索源 (索引延迟数月, 新构件搜不到) 和回退机制;
+        // 失败时异常向上传播, 由 doSearch 统一带源名报错。
+        // 排序方式由用户在搜索框旁下拉框选择 (Popularity 等效 mvnrepository.com 的流行度排序)。
+        val results = trySearch(SonatypeCentralApi(timeoutMs, settings.searchSort.apiValue), query, page, pageSize)
 
         // Sonatype browse API 已返回准确的 latestVersion 和 timestamp, 无需再补充 metadata。
-        // 仅当使用 Solr 回退时, 才用 maven-metadata.xml 补充最新版本 (Solr 索引有数月延迟)。
-        val finalResults = if (usedApi == "solr") {
-            enrichWithLatestVersions(results, timeoutMs)
-        } else {
-            results
-        }
-
         // 客户端重排序: artifactId 精确匹配查询词的排到最前。
         // Sonatype browse API 的默认排序未必把精确匹配放第一 (例如搜 "hutool" 时 hutool-poi 可能排在 hutool-all 前),
         // 这里保证用户搜 "hutool-all" / "spring-boot-starter-webmvc" 等精确名时, 官方同名构件必排第一。
-        return reorderExactMatchFirst(finalResults, query)
+        return reorderExactMatchFirst(results, query)
     }
 
     /**
@@ -174,61 +191,6 @@ class MavenSearchService : Disposable {
         return if (exact.isEmpty()) results else exact + others
     }
 
-    /**
-     * 用 repo1.maven.org 的 maven-metadata.xml 实时补充最新版本信息
-     *
-     * search.maven.org 的 Solr 索引数据有延迟 (实测 hutool-all 最新 5.8.46,
-     * 但 Solr 索引停在 5.8.36), 通过 maven-metadata.xml 获取仓库真实最新版本。
-     *
-     * 并行请求 (使用平台线程池), 单个构件请求失败或超时不影响其他结果 (保留原始结果)。
-     * 总超时为 timeoutMs, 超时后未完成的请求取消并保留原始结果。
-     */
-    private fun enrichWithLatestVersions(
-        results: List<SearchResult>,
-        timeoutMs: Int
-    ): List<SearchResult> {
-        if (results.isEmpty()) return results
-
-        val metadataApi = MavenMetadataApi(timeoutMs)
-        val app = ApplicationManager.getApplication()
-        // 并行请求每个构件的最新版本 (使用平台线程池, 而非 ForkJoinPool)
-        val pairs = results.map { result ->
-            result to app.executeOnPooledThread<SearchResult> {
-                try {
-                    val metadata = metadataApi.getMetadata(result.groupId, result.artifactId)
-                    if (metadata != null && metadata.latestVersion.isNotEmpty()) {
-                        result.copy(
-                            artifact = result.artifact.copy(
-                                latestVersion = metadata.latestVersion,
-                                timestamp = metadata.lastUpdated
-                            )
-                        )
-                    } else {
-                        result
-                    }
-                } catch (e: Exception) {
-                    result
-                }
-            }
-        }
-
-        // 逐个等待, 总超时为 timeoutMs (从现在开始计算 deadline)
-        val deadline = System.currentTimeMillis() + timeoutMs
-        return pairs.map { (original, future) ->
-            val remaining = deadline - System.currentTimeMillis()
-            if (remaining <= 0) {
-                future.cancel(true)
-                return@map original
-            }
-            try {
-                future.get(remaining, java.util.concurrent.TimeUnit.MILLISECONDS)
-            } catch (e: Exception) {
-                future.cancel(true)
-                original
-            }
-        }
-    }
-
     private fun trySearch(
         api: MavenSearchApiClient,
         query: String,
@@ -243,11 +205,11 @@ class MavenSearchService : Disposable {
         val app = ApplicationManager.getApplication()
 
         // 并行发起两个请求:
-        // - MavenMetadataApi (主数据源): maven-metadata.xml, 实时版本列表 + lastUpdated
+        // - MavenMetadataApi (主数据源): maven-metadata.xml, 实时版本列表 + lastUpdated (走配置的镜像源)
         // - SearchMavenOrgApi (补充): Solr gav, 有每版本时间戳, 索引有数月延迟
         val metadataFuture = app.executeOnPooledThread<MavenMetadataApi.MetadataResult?> {
             try {
-                MavenMetadataApi(timeoutMs).getMetadata(groupId, artifactId)
+                MavenMetadataApi(timeoutMs, settings.repoMirror.baseUrl).getMetadata(groupId, artifactId)
             } catch (e: Exception) {
                 log.info("MavenMetadataApi failed for $groupId:$artifactId: ${e.message}")
                 null
@@ -332,7 +294,8 @@ class MavenSearchService : Disposable {
 
         val futures = versions.map { version ->
             java.util.concurrent.CompletableFuture.supplyAsync {
-                val url = "https://repo1.maven.org/maven2/$groupPath/$artifactId/$version/$artifactId-$version.pom"
+                // HEAD 请求走配置的仓库镜像源 (国内镜像 Last-Modified 响应更快更稳)
+                val url = "${settings.repoMirror.baseUrl}/$groupPath/$artifactId/$version/$artifactId-$version.pom"
                 try {
                     val conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
                         requestMethod = "HEAD"

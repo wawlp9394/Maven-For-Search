@@ -6,31 +6,31 @@ import org.w3c.dom.Element
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * Maven Central 仓库元数据 API (repo1.maven.org)
+ * Maven 仓库元数据 API
  *
- * 使用 Maven Central 仓库的 maven-metadata.xml 获取实时版本数据。
- * 这是 Maven Central 的真实仓库元数据,实时更新,包含所有已发布的版本。
+ * 使用仓库的 maven-metadata.xml 获取实时版本数据。
+ * 这是 Maven 仓库的真实元数据,实时更新,包含所有已发布的版本。
+ * 支持配置仓库镜像 baseUrl (v1.0.9): 官方 repo1.maven.org 或国内镜像 (阿里云/华为云/腾讯云)。
  *
- * URL 格式: https://repo1.maven.org/maven2/{groupIdPath}/{artifactId}/maven-metadata.xml
- * 例如: https://repo1.maven.org/maven2/cn/hutool/hutool-all/maven-metadata.xml
+ * URL 格式: {baseUrl}/{groupIdPath}/{artifactId}/maven-metadata.xml
+ * 例如: https://maven.aliyun.com/repository/public/cn/hutool/hutool-all/maven-metadata.xml
  *
  * 优势:
  * - 数据实时 (search.maven.org 的 Solr 索引有数月延迟, maven-metadata.xml 是仓库真实状态)
  * - 包含所有版本
  * - 公开可用,无需认证
+ * - 国内镜像可大幅提升访问速度
  *
  * 局限:
  * - 只能查询已知 groupId:artifactId 的版本, 不支持关键词搜索
- * - 搜索功能仍需依赖 search.maven.org
+ * - 搜索功能仍需依赖 search.maven.org / central.sonatype.com
  */
 class MavenMetadataApi(
-    private val timeoutMs: Int = 10000
+    private val timeoutMs: Int = 10000,
+    /** 仓库镜像 baseUrl, 默认 Maven Central 官方仓库 */
+    private val baseUrl: String = "https://repo1.maven.org/maven2"
 ) {
     private val log = logger<MavenMetadataApi>()
-
-    companion object {
-        private const val BASE_URL = "https://repo1.maven.org/maven2"
-    }
 
     data class MetadataResult(
         val latestVersion: String,
@@ -49,7 +49,7 @@ class MavenMetadataApi(
      */
     fun getMetadata(groupId: String, artifactId: String): MetadataResult? {
         val groupPath = groupId.replace('.', '/')
-        val url = "$BASE_URL/$groupPath/$artifactId/maven-metadata.xml"
+        val url = "$baseUrl/$groupPath/$artifactId/maven-metadata.xml"
 
         val xml = try {
             HttpRequests.request(url)

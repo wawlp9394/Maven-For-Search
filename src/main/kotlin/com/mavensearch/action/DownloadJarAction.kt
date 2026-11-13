@@ -69,10 +69,11 @@ class DownloadJarAction(
         })
     }
 
-    /** 构建 Maven Central jar 下载 URL */
+    /** 构建 jar 下载 URL (使用配置的仓库镜像源, 国内网络走镜像更快) */
     private fun buildJarUrl(groupId: String, artifactId: String, version: String): String {
         val groupPath = groupId.replace(".", "/")
-        return "https://repo1.maven.org/maven2/$groupPath/$artifactId/$version/$artifactId-$version.jar"
+        val baseUrl = settings.repoMirror.baseUrl
+        return "$baseUrl/$groupPath/$artifactId/$version/$artifactId-$version.jar"
     }
 
     /** 解析目标目录,不存在则创建 */

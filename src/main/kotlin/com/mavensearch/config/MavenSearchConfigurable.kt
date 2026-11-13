@@ -18,7 +18,7 @@ import javax.swing.JPanel
 class MavenSearchConfigurable : Configurable {
 
     private val panel = JPanel(GridBagLayout())
-    private val searchSourceCombo = ComboBox(DefaultComboBoxModel(SearchSource.entries.toTypedArray()))
+    private val repoMirrorCombo = ComboBox(DefaultComboBoxModel(RepoMirror.entries.toTypedArray()))
     private val debounceField = JBTextField()
     private val pageSizeField = JBTextField()
     private val timeoutField = JBTextField()
@@ -38,9 +38,11 @@ class MavenSearchConfigurable : Configurable {
 
         var row = 0
 
-        gbc.gridy = row++; gbc.gridx = 0; panel.add(JBLabel("Search source:"), gbc)
+        // 仓库镜像源: 用于 jar 下载 / maven-metadata / 版本时间戳请求 (国内网络建议选国内镜像提速)
+        // 搜索源固定使用 central.sonatype.com (唯一实时搜索源), 无下拉项
+        gbc.gridy = row++; gbc.gridx = 0; panel.add(JBLabel("Repository mirror:"), gbc)
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
-        panel.add(searchSourceCombo, gbc)
+        panel.add(repoMirrorCombo, gbc)
 
         gbc.gridy = row++; gbc.gridx = 0; gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0.0
         panel.add(JBLabel("Debounce delay (ms):"), gbc)
@@ -77,7 +79,7 @@ class MavenSearchConfigurable : Configurable {
 
     override fun isModified(): Boolean {
         val s = settings.state
-        return searchSourceCombo.selectedItem != settings.searchSource ||
+        return repoMirrorCombo.selectedItem != settings.repoMirror ||
                 debounceField.text != s.debounceDelayMs.toString() ||
                 pageSizeField.text != s.pageSize.toString() ||
                 timeoutField.text != s.networkTimeoutSec.toString() ||
@@ -88,10 +90,11 @@ class MavenSearchConfigurable : Configurable {
 
     override fun apply() {
         val s = settings.state
-        s.searchSource = (searchSourceCombo.selectedItem as SearchSource).name
-        s.debounceDelayMs = debounceField.text.toIntOrNull() ?: 300
-        s.pageSize = pageSizeField.text.toIntOrNull() ?: 20
-        s.networkTimeoutSec = timeoutField.text.toIntOrNull() ?: 10
+        s.repoMirror = (repoMirrorCombo.selectedItem as RepoMirror).name
+        // 输入下限校验: 超时 0 会导致 HttpURLConnection 无限等待; pageSize 0 会导致分页异常
+        s.debounceDelayMs = (debounceField.text.toIntOrNull() ?: 300).coerceIn(0, 5000)
+        s.pageSize = (pageSizeField.text.toIntOrNull() ?: 20).coerceIn(1, 100)
+        s.networkTimeoutSec = (timeoutField.text.toIntOrNull() ?: 10).coerceIn(1, 120)
         s.enableDownloadJar = downloadJarCheck.isSelected
         s.enableAddToPom = addToPomCheck.isSelected
         s.jarDownloadDir = jarDirField.text.ifBlank { "lib" }
@@ -99,7 +102,7 @@ class MavenSearchConfigurable : Configurable {
 
     override fun reset() {
         val s = settings.state
-        searchSourceCombo.selectedItem = settings.searchSource
+        repoMirrorCombo.selectedItem = settings.repoMirror
         debounceField.text = s.debounceDelayMs.toString()
         pageSizeField.text = s.pageSize.toString()
         timeoutField.text = s.networkTimeoutSec.toString()
