@@ -6,7 +6,7 @@
     <name>Maven For Search</name>
 
     <!-- 插件版本 -->
-    <version>1.0.8</version>
+    <version>1.0.9</version>
 
     <!-- 供应商信息 -->
     <vendor email="" url="https://github.com/czshao">czshao</vendor>
@@ -49,6 +49,13 @@
 
     <!-- 变更记录 (中英双语) -->
     <change-notes><![CDATA[
+        <b>1.0.9</b><br/>
+        - Change: Removed AUTO_FALLBACK and the search.maven.org Solr search source (index lags months behind, new artifacts unsearchable); search now uses the central.sonatype.com browse API only, errors report the source name and a suggested fix / 变更: 移除 AUTO_FALLBACK 自动回退与 search.maven.org Solr 搜索源 (索引延迟数月, 新构件搜不到); 搜索固定使用 central.sonatype.com browse API, 失败报错标注源名并给出应对提示<br/>
+        - New: In-IDE sort switcher next to the search box (Relevance / Popularity / Newest) — Popularity replicates mvnrepository.com's most-referenced-first ordering without leaving the IDE / 新增: 搜索框旁排序切换 (Relevance / Popularity / Newest) — Popularity 在 IDE 内等效 mvnrepository.com 的流行度排序, 无需打开浏览器<br/>
+        - New: Configurable repository mirror (Maven Central / Aliyun / Huawei / Tencent) for jar download, maven-metadata.xml and version timestamps / 新增: 可配置仓库镜像 (官方 / 阿里云 / 华为云 / 腾讯云), 作用于 jar 下载、maven-metadata 与版本时间戳请求<br/>
+        - New: Search retries once on network failure (same source, not a fallback) to survive network jitter / 新增: 网络失败自动同源重试一次, 抗网络抖动<br/>
+        - Fix: Solr search errors were swallowed and shown as "no results"; input validation now enforces timeout ≥ 1s, pageSize ≥ 1 / 修复: 搜索网络错误不再被误显示为"无结果"; 设置输入强制下限校验 (timeout ≥ 1s, pageSize ≥ 1)<br/>
+        <br/>
         <b>1.0.8</b><br/>
         - Fix: Search returns no results in recent IDE versions — central.sonatype.com now enforces Cloudflare bot protection and blocks the plugin's minimal request headers with HTTP 403; the browse API request now sends a full browser User-Agent plus sec-fetch-* headers to pass the check (verified working) / 修复: 搜索无结果 — central.sonatype.com 新启用了 Cloudflare Bot 防护, 插件原先的简化请求头被拦截返回 403; browse API 请求改为携带完整浏览器 User-Agent 与 sec-fetch-* 系列头以通过检测 (已实测验证)<br/>
         - If the browse API is still blocked, AUTO_FALLBACK now correctly falls back to search.maven.org Solr / 若 browse API 仍被拦截, AUTO_FALLBACK 会正确回退到 search.maven.org Solr<br/>

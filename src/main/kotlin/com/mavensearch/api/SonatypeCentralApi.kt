@@ -21,10 +21,16 @@ import java.nio.charset.StandardCharsets
  * 响应格式:
  * {"components":[{"namespace":"...","name":"...","latestVersionInfo":{"version":"...","timestampUnixWithMS":...}}]}
  *
- * 排序字段 (可选, 默认按相关性): id, name, namespace, nsPopularityAppCount, publishedDate
+ * 排序参数 (可选, 已 curl 实测验证):
+ * - 不传 sort: 按相关性排序 (API 默认)
+ * - "nsPopularityAppCount": 按流行度排序 (等效 mvnrepository.com 的 popularity 排序)
+ * - "publishedDate": 按最新发布时间排序
+ * - 其余可选: id, name, namespace, nsPopularityOrgCount
  */
 class SonatypeCentralApi(
-    private val timeoutMs: Int = 10000
+    private val timeoutMs: Int = 10000,
+    /** 排序方式 API 值 (null = 默认相关性排序) */
+    private val sort: String? = null
 ) : MavenSearchApiClient {
 
     companion object {
@@ -53,16 +59,19 @@ class SonatypeCentralApi(
         if (trimmed.isEmpty()) return emptyList()
 
         // 构造请求 body (page/size 必须是字符串, 否则 API 返回 400)
+        // sort 非空时附加排序参数 (如 "nsPopularityAppCount" 按流行度排序)
         val body = buildString {
             append('{')
             append("\"searchTerm\":\"").append(escapeJson(trimmed)).append("\"")
             append(",\"page\":\"").append(page).append("\"")
             append(",\"size\":\"").append(pageSize).append("\"")
+            if (sort != null) {
+                append(",\"sort\":\"").append(sort).append("\"")
+            }
             append('}')
         }.toByteArray(StandardCharsets.UTF_8)
 
-        // 失败时抛异常向上传播, 让 AUTO_FALLBACK 能捕获并回退到 Solr
-        // (修复: 原先 catch 后返回 emptyList(), 导致 AUTO_FALLBACK 误以为"正常无结果"而不回退)
+        // 失败时异常向上传播, 让 UI 显示明确的错误信息 (选定源不回退, 用户需知道哪个源失败)
         val json = postJson(BROWSE_URL, body)
 
         return parseSearchResponse(json)
@@ -77,7 +86,7 @@ class SonatypeCentralApi(
      * 重要 (v1.0.8): central.sonatype.com 已启用 Cloudflare Bot 防护,
      * 简化的请求头 (如 "User-Agent: Mozilla/5.0") 会被直接拦截返回 HTTP 403。
      * 必须携带完整浏览器 UA + sec-fetch-* 系列头才能通过检测 (实测验证)。
-     * 若仍被拦截, 异常向上抛出, 由 AUTO_FALLBACK 回退到 search.maven.org Solr。
+     * 若仍被拦截, 异常向上抛出, 由 UI 显示明确错误 (选定源不回退)。
      */
     private fun postJson(urlStr: String, body: ByteArray): String {
         val connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
@@ -108,15 +117,10 @@ class SonatypeCentralApi(
     }
 
     /**
-     * 获取指定 artifact 的所有版本
-     *
+     * 获取指定 artifact 的所有版本 — 已移除。
      * Sonatype browse 版本 API 的 filter 格式限制较多且只返回版本号字符串 (无时间戳),
-     * 因此版本获取统一由 MavenMetadataApi (maven-metadata.xml) 处理, 这里不再实现。
-     * 调用此方法时回退到 maven-metadata.xml 风格的空结果, 由上层 doGetVersions 处理。
+     * 版本获取统一由 MavenMetadataApi (maven-metadata.xml) 处理。
      */
-    override fun getVersions(groupId: String, artifactId: String, pageSize: Int): List<VersionApiResponse> {
-        return emptyList()
-    }
 
     /** 解析搜索响应 JSON */
     private fun parseSearchResponse(json: String): List<SearchApiResponse> {

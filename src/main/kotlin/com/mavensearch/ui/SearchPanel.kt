@@ -3,6 +3,7 @@ package com.mavensearch.ui
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
@@ -14,6 +15,7 @@ import com.mavensearch.action.AddToPomAction
 import com.mavensearch.action.DownloadJarAction
 import com.mavensearch.api.MavenSearchService
 import com.mavensearch.config.MavenSearchSettings
+import com.mavensearch.config.SearchSort
 import com.mavensearch.model.SearchResult
 import java.awt.BorderLayout
 import java.awt.FlowLayout
@@ -22,6 +24,7 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.BorderFactory
+import javax.swing.DefaultComboBoxModel
 import javax.swing.DefaultListModel
 import javax.swing.JButton
 import javax.swing.JComponent
@@ -61,6 +64,26 @@ class SearchPanel(private val project: Project) {
                 performSearchImmediately()
             }
         })
+    }
+
+    /**
+     * 排序方式下拉框 (搜索框右侧)。
+     *
+     * 通过 Sonatype browse API 的 sort 参数实现 IDE 内按流行度/最新排序,
+     * 等效 mvnrepository.com 的搜索体验, 无需打开浏览器。
+     * 切换后立即用当前关键词重新搜索, 并持久化到 Settings 供下次启动沿用。
+     */
+    private val sortCombo = ComboBox(DefaultComboBoxModel(SearchSort.entries.toTypedArray())).apply {
+        selectedItem = settings.searchSort
+        toolTipText = "Sort results (Popularity = most-referenced first, like mvnrepository.com)"
+        addActionListener {
+            val selected = selectedItem as? SearchSort ?: return@addActionListener
+            if (selected != settings.searchSort) {
+                settings.state.searchSort = selected.name
+                // 排序变化立即重新搜索当前关键词 (无防抖, 直接刷新结果)
+                performSearchImmediately()
+            }
+        }
     }
 
     private val listModel = DefaultListModel<SearchResult>()
@@ -128,11 +151,12 @@ class SearchPanel(private val project: Project) {
 
     /** 主面板 */
     val panel: JPanel = JPanel(BorderLayout(JBUI.scale(2), JBUI.scale(2))).apply {
-        // 顶部: 搜索框 (带图标)
+        // 顶部: 搜索框 (带图标) + 排序下拉框 (IDE 内切换 Relevance/Popularity/Newest)
         val topPanel = JPanel(BorderLayout(JBUI.scale(4), 0)).apply {
             border = BorderFactory.createEmptyBorder(6, 6, 4, 6)
             add(JBLabel(AllIcons.Actions.Search), BorderLayout.WEST)
             add(searchField, BorderLayout.CENTER)
+            add(sortCombo, BorderLayout.EAST)
         }
         add(topPanel, BorderLayout.NORTH)
 
