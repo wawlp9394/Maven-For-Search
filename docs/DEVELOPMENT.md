@@ -11,7 +11,7 @@
 | 临时分支    | 大功能可用 `feature/xxx` 从 dev 切出      | 完成后合并回 dev 并删除           |
 
 ```
-main ────●────────────────────●──── (tag v1.0.6)  (tag v1.0.7)
+main ────●────────────────────●──── (tag v1.0.8)  (tag v1.0.9)
           \                  /
 dev    ────\──●──●──●──●────/──────── (日常开发、测试)
               feature/xxx ─┘
@@ -55,20 +55,20 @@ git push origin dev
 
 ### 第 3 步：同步版本号与文档（在 dev 分支上完成）
 
-一次发布需在 **dev 分支**同步修改以下位置（以 1.0.7 为例）：
+一次发布需在 **dev 分支**同步修改以下位置（以 1.0.9 为例）：
 
 | 文件                            | 修改内容                                  |
 | ----------------------------- | ------------------------------------- |
-| `build.gradle.kts`            | `version = "1.0.7"`                   |
-| `gradle.properties`           | `pluginVersion=1.0.7`                 |
-| `src/main/resources/META-INF/plugin.xml` | `<version>1.0.7</version>` 与 `<change-notes>` 顶部追加本版说明 |
+| `build.gradle.kts`            | `version = "1.0.9"`                   |
+| `gradle.properties`           | `pluginVersion=1.0.9`                 |
+| `src/main/resources/META-INF/plugin.xml` | `<version>1.0.9</version>` 与 `<change-notes>` 顶部追加本版说明 |
 | `README.md`                   | 构建产物文件名、安装说明文件名、版本历史表追加一行               |
 | `docs/REQUIREMENTS.md`        | 版本历史表追加一行                             |
 
 ```bash
 # 仍在 dev 分支
 git add -u
-git commit -m "chore: bump version to 1.0.7"
+git commit -m "chore: bump version to 1.0.9"
 git push origin dev
 ```
 
@@ -88,8 +88,8 @@ git merge --no-ff dev -m "chore: merge dev -> main (v1.0.x)"
 git push origin main
 
 # 附注标签（含发布说明），命名规范: v<主>.<次>.<修订>
-git tag -a v1.0.7 -m "v1.0.7: 修复中文输入法搜索 bug"
-git push origin v1.0.7
+git tag -a v1.0.9 -m "v1.0.9: 修复中文输入法搜索 bug"
+git push origin v1.0.9
 ```
 
 ### 第 6 步：创建 GitHub Release 并上传产物
@@ -106,7 +106,10 @@ git push origin v1.0.7
 gh auth login                      # 首次登录
 
 # 发布说明先写入文件 (避免命令行 \n 不被解析为换行)
-gh release create v1.0.7 build/distributions/maven-for-search-1.0.7.zip --title "v1.0.7 - 修复中文输入法搜索 bug" --notes-file release-notes.md
+gh release create v1.0.9 build/distributions/maven-for-search-1.0.9.zip --title "v1.0.9 - 修复搜索与 2026.3 兼容" --notes-file release-notes.md
+
+# 覆盖 Release 中已存在的同名 zip（重新打包后重传）
+gh release upload v1.0.9 build/distributions/maven-for-search-1.0.9.zip --clobber
 ```
 
 > Windows PowerShell 不支持 `\` 续行，请写成一行或用反引号 `` ` `` 续行。
@@ -125,12 +128,18 @@ $api = 'https://api.github.com/repos/wawlp9394/Maven-For-Search'
 # 2) 创建 release（body 为 Markdown 发布说明）
 $rel = Invoke-RestMethod -Uri "$api/releases" -Method Post -Headers $headers `
   -ContentType 'application/json; charset=utf-8' `
-  -Body (@{ tag_name = "v1.0.7"; name = "v1.0.7"; body = "## 变更说明"; draft = $false; prerelease = $false } | ConvertTo-Json)
+  -Body (@{ tag_name = "v1.0.9"; name = "v1.0.9"; body = "## 变更说明"; draft = $false; prerelease = $false } | ConvertTo-Json)
 
 # 3) 上传 zip 产物
-$upload = $rel.upload_url -replace '\{\?name,label\}', '?name=maven-for-search-1.0.7.zip'
+$upload = $rel.upload_url -replace '\{\?name,label\}', '?name=maven-for-search-1.0.9.zip'
 Invoke-RestMethod -Uri $upload -Method Post -Headers $headers -ContentType 'application/zip' `
-  -InFile 'build\distributions\maven-for-search-1.0.7.zip'
+  -InFile 'build\distributions\maven-for-search-1.0.9.zip'
+
+# 4) 覆盖已存在的同名资产: 先删除旧资产, 再重复第 3 步上传
+$rel = Invoke-RestMethod -Uri "$api/releases/tags/v1.0.9" -Headers $headers
+$rel.assets | Where-Object { $_.name -eq 'maven-for-search-1.0.9.zip' } | ForEach-Object {
+  Invoke-RestMethod -Uri $_.url -Method Delete -Headers $headers
+}
 ```
 
 > 注意：token 需具备 `repo` 权限（GCM 默认 OAuth 即包含）。若凭据是只读 PAT，会返回 401/403。
@@ -160,8 +169,8 @@ git push -u origin dev           # 首次推送并建立跟踪
 
 # ---- 标签 ----
 git tag                          # 列出本地 tag
-git tag -a v1.0.7 -m "说明"      # 创建附注 tag
-git push origin v1.0.7           # 推送单个 tag
+git tag -a v1.0.9 -m "说明"      # 创建附注 tag
+git push origin v1.0.9           # 推送单个 tag
 git push --tags                  # 推送所有 tag（谨慎）
 
 # ---- 撤销（提交前）----
