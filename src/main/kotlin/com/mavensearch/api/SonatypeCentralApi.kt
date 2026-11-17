@@ -1,182 +1,178 @@
 package com.mavensearch.api
 
 import com.google.gson.JsonParser
-import java.net.HttpURLConnection
-import java.net.URL
+import com.intellij.util.io.HttpRequests
+import java.io.IOException
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 
 /**
- * Sonatype Central 搜索 API (central.sonatype.com 真实接口)
+ * Sonatype Central 搜索 API (central.sonatype.com 公开 Solr 端点)
  *
- * 通过抓包分析 central.sonatype.com 前端 Next.js 代码, 发现它实际调用:
- *   POST https://central.sonatype.com/api/internal/browse/components
- *   Content-Type: application/json
- *   Body: {"searchTerm":"关键词","page":"0","size":"20"}
+ * v1.0.9 修复背景:
+ * central.sonatype.com 的 browse API (/api/internal/browse/components) 已被 Cloudflare
+ * 升级为 TLS 指纹级 Bot 检测, curl / Node / JDK (HttpURLConnection 与 java.net.http.HttpClient)
+ * 直连一律返回 400/403, 只有真实浏览器 TLS 栈能通过; 而 IDE 内嵌 JCEF 在部分 IDE 发行版
+ * 中不存在 (NoClassDefFoundError: com.intellij.ui.jcef.JBCefApp), 无法作为兜底。
  *
- * 优势 (相比 search.maven.org Solr):
- * - 数据实时: 直接查询仓库, 新发布的构件立即可搜 (Solr 索引有数月延迟)
- * - 结果稳定: 默认排序确定性高, 重复查询结果一致 (Solr 按 score 排序会浮动)
- * - 与 central.sonatype.com 页面搜索结果完全一致
+ * 现改用同域名下的公开 Solr 端点:
+ *   GET https://central.sonatype.com/solrsearch/select?q=<term>&rows=<n>&wt=json
  *
- * 响应格式:
- * {"components":[{"namespace":"...","name":"...","latestVersionInfo":{"version":"...","timestampUnixWithMS":...}}]}
+ * 该端点特性 (curl + JDK 实测):
+ * - 索引实时: hutool 最新 5.8.48 可立即搜到 (search.maven.org 的 Solr 索引仍停在 5.8.36)
+ * - 不校验 TLS 指纹: Java 直连返回 200, 无需浏览器/JCEF
+ * - URL query 不允许出现空格 (含空格直接 400), 多关键词用 "|" (OR) 连接
+ * - 通配符 "*" 有效: "token*" 为前缀匹配, "*token*" 为子串匹配
+ * - 通配符查询按索引顺序返回 (没有相关性打分), 因此排序必须由客户端完成
+ * - 不支持 sort 参数 (传 sort 会 400)
  *
- * 排序参数 (可选, 已 curl 实测验证):
- * - 不传 sort: 按相关性排序 (API 默认)
- * - "nsPopularityAppCount": 按流行度排序 (等效 mvnrepository.com 的 popularity 排序)
- * - "publishedDate": 按最新发布时间排序
- * - 其余可选: id, name, namespace, nsPopularityOrgCount
+ * 查询策略 (并行两次请求, 合并去重):
+ * 1. 前缀查询 "tok1|tok2*": 有 Solr 相关性, 完整 artifact 名/前缀匹配的结果排前
+ * 2. 子串查询 "*tok1*tok2*": 覆盖"只知道中间或结尾片段"的场景
+ *    (例如输入 webmvc 能搜到 spring-boot-starter-webmvc)
  */
 class SonatypeCentralApi(
     private val timeoutMs: Int = 10000,
-    /** 排序方式 API 值 (null = 默认相关性排序) */
-    private val sort: String? = null
+    /** 每个查询抓取的结果数 (不做服务端分页, 由上层排序后再切片) */
+    private val fetchSize: Int = DEFAULT_FETCH_SIZE
 ) : MavenSearchApiClient {
 
     companion object {
-        private const val BROWSE_URL = "https://central.sonatype.com/api/internal/browse/components"
+        private const val BASE_URL = "https://central.sonatype.com/solrsearch/select"
+
+        /** 默认单个查询抓取条数: 前缀 + 子串合并后足够覆盖同名变体 */
+        const val DEFAULT_FETCH_SIZE = 100
 
         /**
-         * 完整浏览器 User-Agent
-         * Cloudflare 会拦截不完整/非浏览器 UA ("Mozilla/5.0"), 必须使用真实浏览器完整 UA
+         * 纯单词片段 (如 "webmvc") 的子串查询抓取条数。
+         * 子串通配没有相关性排序, 目标构件可能排在索引顺序的几百位
+         * (实测 "*webmvc*" 中 spring-boot-starter-webmvc 位于第 300 位),
+         * 因此对片段型输入多取一些, 由客户端重排后再切片。
          */
-        private const val BROWSER_USER_AGENT =
+        private const val FRAGMENT_FETCH_SIZE = 300
+
+        /** 完整浏览器 UA (端点本身不校验, 保持与官网一致的请求特征以防后续加严) */
+        private const val USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+        /**
+         * Solr 查询中需要剔除的字符 (只保留字母/数字/点/短横线/下划线)。
+         * 这些字符属于 Solr 语法符号 (+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /) 或 URL 保留字符,
+         * 直接透传会导致 400 或查询语义变化。通配符 "*" 由本类统一追加, 不来自用户输入。
+         */
+        private val INVALID_CHARS = Regex("[^A-Za-z0-9._\\-]")
     }
 
     /**
-     * 搜索 artifact
+     * 搜索 artifact (返回合并后的原始结果, 不含分页)
      *
-     * 调用 central.sonatype.com 的 browse API, 返回与官网搜索页面一致的结果。
-     * 支持 "groupId:artifactId" 精确坐标查询 (searchTerm 直接传完整字符串)。
+     * 分页由 MavenSearchService 在客户端完成: 需要先对完整结果集重排/排序, 再按页切片。
      *
-     * @param query 搜索关键词, 例如 "spring-boot-starter-webmvc" 或 "org.springframework.boot:spring-boot-starter-web"
-     * @param page 页码 (从 0 开始), API 要求字符串形式
-     * @param pageSize 每页数量, API 要求字符串形式
+     * @param query 搜索关键词, 例如 "spring-boot-starter-web"、"webmvc" 或 "cn.hutool:hutool-all"
      */
     override fun search(query: String, page: Int, pageSize: Int): List<SearchApiResponse> {
-        val trimmed = query.trim()
-        if (trimmed.isEmpty()) return emptyList()
+        val tokens = tokenize(query)
+        // 关键词清洗后为空 (例如只输入了符号), 直接返回空结果, 不发无意义请求
+        if (tokens.isEmpty()) return emptyList()
 
-        // 构造请求 body (page/size 必须是字符串, 否则 API 返回 400)
-        // sort 非空时附加排序参数 (如 "nsPopularityAppCount" 按流行度排序)
-        val body = buildString {
-            append('{')
-            append("\"searchTerm\":\"").append(escapeJson(trimmed)).append("\"")
-            append(",\"page\":\"").append(page).append("\"")
-            append(",\"size\":\"").append(pageSize).append("\"")
-            if (sort != null) {
-                append(",\"sort\":\"").append(sort).append("\"")
-            }
-            append('}')
-        }.toByteArray(StandardCharsets.UTF_8)
+        // 前缀查询: 完整名/前缀匹配 (Solr 会按相关性排序)
+        val prefixQuery = tokens.joinToString("|") + "*"
+        // 子串查询: 中间/后缀片段匹配 (Solr 按索引顺序返回, 排序由客户端负责)
+        val substringQuery = tokens.joinToString("") { "*$it" } + "*"
+        // 纯单词 (无连字符) 更像"只知道一部分"的片段输入, 子串查询多取一些
+        val substringRows = if (!query.contains('-') && !query.contains(' ')) {
+            FRAGMENT_FETCH_SIZE
+        } else {
+            fetchSize
+        }
 
-        // 失败时异常向上传播, 让 UI 显示明确的错误信息 (选定源不回退, 用户需知道哪个源失败)
-        val json = postJson(BROWSE_URL, body)
+        val prefixFuture = CompletableFuture.supplyAsync { runCatching { fetch(prefixQuery, fetchSize) }.getOrNull() }
+        val substringFuture = CompletableFuture.supplyAsync { runCatching { fetch(substringQuery, substringRows) }.getOrNull() }
 
+        val prefix = awaitOrNull(prefixFuture)
+        val substring = awaitOrNull(substringFuture)
+        if (prefix == null && substring == null) {
+            // 两次请求都失败才报错, 让 UI 显示明确的网络错误 (不静默返回空列表)
+            throw IOException("Search failed: both prefix and substring queries to central.sonatype.com failed")
+        }
+
+        // 合并去重 (同一 group:artifact 可能同时出现在两种查询结果里)
+        return ((prefix ?: emptyList()) + (substring ?: emptyList()))
+            .distinctBy { it.groupId + ":" + it.artifactId }
+    }
+
+    /** 等待并行请求结果; 超时或异常返回 null, 并取消未完成的任务 */
+    private fun awaitOrNull(future: CompletableFuture<List<SearchApiResponse>?>): List<SearchApiResponse>? {
+        return try {
+            future.get(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
+        } catch (e: Exception) {
+            future.cancel(true)
+            null
+        }
+    }
+
+    /** 单次 Solr 请求 */
+    private fun fetch(solrQuery: String, rows: Int): List<SearchApiResponse> {
+        val url = "$BASE_URL?q=${encode(solrQuery)}&rows=$rows&wt=json"
+        val json = HttpRequests.request(url)
+            .userAgent(USER_AGENT)
+            .connectTimeout(timeoutMs)
+            .readTimeout(timeoutMs)
+            .readString()
         return parseSearchResponse(json)
     }
 
     /**
-     * 发送 POST 请求并返回响应字符串
-     *
-     * 使用原生 HttpURLConnection (而非 IntelliJ HttpRequests), 因为后者对 POST body 支持有限。
-     * 连接/读取超时由 [timeoutMs] 控制, 避免网络慢导致 UI 卡死。
-     *
-     * 重要 (v1.0.8): central.sonatype.com 已启用 Cloudflare Bot 防护,
-     * 简化的请求头 (如 "User-Agent: Mozilla/5.0") 会被直接拦截返回 HTTP 403。
-     * 必须携带完整浏览器 UA + sec-fetch-* 系列头才能通过检测 (实测验证)。
-     * 若仍被拦截, 异常向上抛出, 由 UI 显示明确错误 (选定源不回退)。
+     * 把用户输入拆成安全的查询 token。
+     * - "groupId:artifactId" 坐标: 只取 artifactId 部分
+     *   (端点对带冒号的输入返回 404, g:+a: 组合会路由到版本级索引)
+     * - 空白分词, 剔除会破坏 Solr 语法的字符
      */
-    private fun postJson(urlStr: String, body: ByteArray): String {
-        val connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = timeoutMs
-            readTimeout = timeoutMs
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Accept", "*/*")
-            setRequestProperty("Accept-Language", "en-US,en;q=0.9")
-            setRequestProperty("User-Agent", BROWSER_USER_AGENT)
-            setRequestProperty("Origin", "https://central.sonatype.com")
-            setRequestProperty("Referer", "https://central.sonatype.com/")
-            setRequestProperty("Sec-Fetch-Dest", "empty")
-            setRequestProperty("Sec-Fetch-Mode", "cors")
-            setRequestProperty("Sec-Fetch-Site", "same-origin")
-            doOutput = true
-        }
-        try {
-            connection.outputStream.use { it.write(body) }
-            val code = connection.responseCode
-            if (code != 200) {
-                throw java.io.IOException("HTTP $code from $urlStr")
-            }
-            return connection.inputStream.use { it.readBytes() }.toString(StandardCharsets.UTF_8)
-        } finally {
-            connection.disconnect()
-        }
+    private fun tokenize(raw: String): List<String> {
+        val trimmed = raw.trim()
+        val target = if (trimmed.contains(':')) trimmed.substringAfter(':') else trimmed
+        return target.split(Regex("\\s+"))
+            .map { it.replace(INVALID_CHARS, "") }
+            .filter { it.isNotEmpty() }
     }
 
-    /**
-     * 获取指定 artifact 的所有版本 — 已移除。
-     * Sonatype browse 版本 API 的 filter 格式限制较多且只返回版本号字符串 (无时间戳),
-     * 版本获取统一由 MavenMetadataApi (maven-metadata.xml) 处理。
-     */
+    private fun encode(value: String): String =
+        URLEncoder.encode(value, StandardCharsets.UTF_8.name())
 
-    /** 解析搜索响应 JSON */
+    /** 解析 Solr 响应 JSON (解析失败上抛异常 — 网络错误不能被误显示为"无结果") */
     private fun parseSearchResponse(json: String): List<SearchApiResponse> {
         val root = try {
             JsonParser.parseString(json).asJsonObject
         } catch (e: Exception) {
-            return emptyList()
+            throw IOException("Invalid search response (expected JSON, got: ${json.take(120)})")
         }
 
-        val components = root.getAsJsonArray("components") ?: return emptyList()
+        val response = root.getAsJsonObject("response")
+            ?: throw IOException("Search response missing 'response' field: ${json.take(120)}")
 
-        return components.mapNotNull { elem ->
+        val docs = response.getAsJsonArray("docs") ?: return emptyList()
+
+        return docs.mapNotNull { elem ->
             val obj = elem.asJsonObject
-            val namespace = obj.get("namespace")?.asString ?: return@mapNotNull null
-            val name = obj.get("name")?.asString ?: return@mapNotNull null
+            val groupId = obj.get("g")?.asString ?: return@mapNotNull null
+            val artifactId = obj.get("a")?.asString ?: return@mapNotNull null
+            val latestVersion = obj.get("latestVersion")?.asString ?: ""
+            val timestamp = obj.get("timestamp")?.asLong ?: 0L
+            val versionCount = obj.get("versionCount")?.asInt ?: 0
 
-            // latestVersionInfo 包含 version 和 timestampUnixWithMS
-            val versionInfo = obj.getAsJsonObject("latestVersionInfo")
-            val version = versionInfo?.get("version")?.asString ?: ""
-            val timestamp = versionInfo?.get("timestampUnixWithMS")?.asLong ?: 0L
-
-            if (namespace.isNotEmpty() && name.isNotEmpty()) {
+            if (groupId.isNotEmpty() && artifactId.isNotEmpty()) {
                 SearchApiResponse(
-                    groupId = namespace,
-                    artifactId = name,
-                    latestVersion = version,
-                    timestamp = timestamp
+                    groupId = groupId,
+                    artifactId = artifactId,
+                    latestVersion = latestVersion,
+                    timestamp = timestamp,
+                    versionCount = versionCount
                 )
             } else {
                 null
             }
         }
-    }
-
-    /** 转义 JSON 字符串中的特殊字符 */
-    private fun escapeJson(s: String): String {
-        val sb = StringBuilder(s.length + 8)
-        for (c in s) {
-            when (c) {
-                '"' -> sb.append("\\\"")
-                '\\' -> sb.append("\\\\")
-                '\n' -> sb.append("\\n")
-                '\r' -> sb.append("\\r")
-                '\t' -> sb.append("\\t")
-                '\b' -> sb.append("\\b")
-                '\u000C' -> sb.append("\\f")
-                else -> {
-                    // 其他 ASCII 控制字符 (< 0x20) 必须转义为 \uXXXX, 否则生成非法 JSON
-                    if (c < ' ') {
-                        sb.append("\\u").append(String.format("%04x", c.code))
-                    } else {
-                        sb.append(c)
-                    }
-                }
-            }
-        }
-        return sb.toString()
     }
 }

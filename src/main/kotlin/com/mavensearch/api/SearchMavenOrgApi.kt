@@ -6,20 +6,24 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 /**
- * search.maven.org Solr API (仅版本时间戳查询)
+ * Sonatype Solr API (仅版本时间戳查询)
  *
- * v1.0.9 起搜索功能固定使用 SonatypeCentralApi (central.sonatype.com browse API,
- * 数据实时), 本类不再承担搜索职责, 仅保留 Solr core=gav 查询用于:
- * 获取每个版本的独立发布时间戳 (maven-metadata.xml 只有全局 lastUpdated, 无每版本时间戳)。
+ * v1.0.9 修复: 端点从 search.maven.org 切换到 central.sonatype.com/solrsearch/select。
+ * 两者协议相同 (Solr select), 但 Sonatype 域名下的索引是实时的 — 实测 hutool 最新
+ * 5.8.48 可立即查到, 而 search.maven.org 仍停在 5.8.36 (延迟约 20 个月)。
  *
- * 注意: Solr 索引有数月延迟, 最新版本可能查不到时间戳 (缺失部分由上层
- * MavenSearchService.fetchMissingTimestamps 用 HEAD Last-Modified 实时补全)。
+ * 本类只负责 core=gav 查询, 用于获取每个版本的独立发布时间戳
+ * (maven-metadata.xml 只有全局 lastUpdated, 无每版本时间戳)。
  */
 class SearchMavenOrgApi(
     private val timeoutMs: Int = 10000
 ) {
     companion object {
-        private const val BASE_URL = "https://search.maven.org/solrsearch/select"
+        private const val BASE_URL = "https://central.sonatype.com/solrsearch/select"
+
+        /** 完整浏览器 UA (保持与搜索请求一致, 防止端点后续加严) */
+        private const val USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     }
 
     /**
@@ -35,7 +39,7 @@ class SearchMavenOrgApi(
         val url = "$BASE_URL?q=$encodedQuery&core=gav&rows=$pageSize&wt=json"
 
         val json = HttpRequests.request(url)
-            .userAgent("Mozilla/5.0")
+            .userAgent(USER_AGENT)
             .connectTimeout(timeoutMs)
             .readTimeout(timeoutMs)
             .readString()
