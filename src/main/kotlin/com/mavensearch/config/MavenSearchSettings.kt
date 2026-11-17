@@ -7,20 +7,20 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 
 /**
- * 搜索结果排序方式 (通过 Sonatype browse API 的 sort 参数实现, 已 curl 实测验证)
+ * 搜索结果排序方式 (客户端排序)
  *
- * 目标: 在 IDE 内复刻 mvnrepository.com 的搜索体验 (按流行度排序),
- * 无需打开浏览器 — 数据源同为 Maven Central, 实时性一致。
+ * Solr 搜索端点不支持 sort 参数 (传 sort 直接返回 400), 排序在 MavenSearchService
+ * 拿到结果集后于客户端完成。
+ *
+ * 注: 原 "Popularity" 选项已移除 —— 该端点返回的 versionCount 恒为 0,
+ * 没有可用的引用数/流行度数据, 保留该选项只会误导用户。
  */
-enum class SearchSort(val displayName: String, val apiValue: String?) {
-    /** 相关性排序 (API 默认, 不传 sort 参数) */
-    RELEVANCE("Relevance", null),
+enum class SearchSort(val displayName: String) {
+    /** 相关性排序: 精确匹配 → 前缀变体 → 其余结果 */
+    RELEVANCE("Relevance"),
 
-    /** 按流行度排序 (引用该命名空间的应用数量, 等效 mvnrepository 的 popularity 排序) */
-    POPULARITY("Popularity", "nsPopularityAppCount"),
-
-    /** 按最新发布时间排序 */
-    NEWEST("Newest", "publishedDate");
+    /** 按最新版本发布时间排序 */
+    NEWEST("Newest");
 
     /** 下拉框显示可读名称而非枚举常量名 */
     override fun toString(): String = displayName
@@ -30,9 +30,8 @@ enum class SearchSort(val displayName: String, val apiValue: String?) {
  * 仓库镜像源 (用于 jar 下载、maven-metadata.xml、版本时间戳 HEAD 请求等仓库文件操作)
  *
  * 注意: 国内镜像 (阿里云/华为云/腾讯云) 只提供仓库文件代理, 不提供搜索 API,
- * 因此仅仓库文件类请求走镜像; 搜索 API 固定使用 central.sonatype.com browse
- * (通用 Maven 搜索 API 仅有 search.maven.org Solr 与 Sonatype browse 两家,
- * Solr 索引延迟数月已于 v1.0.9 移除, 现仅存 Sonatype 一家实时源)。
+ * 因此仅仓库文件类请求走镜像; 搜索固定走 central.sonatype.com 的公开 Solr 端点
+ * (solrsearch/select, 索引实时且 Java 可直连)。
  */
 enum class RepoMirror(val displayName: String, val baseUrl: String) {
     /** Maven Central 官方仓库 (全球 CDN, 实时性最好) */
