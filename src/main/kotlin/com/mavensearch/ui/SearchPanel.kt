@@ -69,13 +69,13 @@ class SearchPanel(private val project: Project) {
     /**
      * 排序方式下拉框 (搜索框右侧)。
      *
-     * 通过 Sonatype browse API 的 sort 参数实现 IDE 内按流行度/最新排序,
-     * 等效 mvnrepository.com 的搜索体验, 无需打开浏览器。
+     * Solr 搜索端点不支持服务端排序, 切换后由 MavenSearchService 在客户端对整个结果集
+     * 排序 (Relevance 精确匹配/变体优先 / Newest 按发布时间), 再按页切片。
      * 切换后立即用当前关键词重新搜索, 并持久化到 Settings 供下次启动沿用。
      */
     private val sortCombo = ComboBox(DefaultComboBoxModel(SearchSort.entries.toTypedArray())).apply {
         selectedItem = settings.searchSort
-        toolTipText = "Sort results (Popularity = most-referenced first, like mvnrepository.com)"
+        toolTipText = "Sort results (Relevance = exact match then variants, Newest = latest release first)"
         addActionListener {
             val selected = selectedItem as? SearchSort ?: return@addActionListener
             if (selected != settings.searchSort) {

@@ -21,7 +21,7 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // IntelliJ IDEA Community 2024.2 (最低兼容版本,支持到 2026+)
+        // IntelliJ IDEA Community 2024.2 (最低兼容版本, 保证向下兼容 2024.2+)
         create("IC", "2024.2")
         // 插件签名工具
         pluginVerifier()
@@ -46,8 +46,11 @@ tasks {
 
     // 插件打包配置
     patchPluginXml {
+        // 向下兼容: 最低支持 2024.2 (build 242)
         sinceBuild.set("242")
-        untilBuild.set(provider { "" })
+        // 向上不设上限: 显式置空以移除 until-build 属性,
+        // 避免生成 until-build="" 导致 IDEA 2026.3 等新版本判定兼容范围异常
+        untilBuild.set(provider { null })
     }
 
     // 插件验证

@@ -39,7 +39,7 @@ class MavenSearchConfigurable : Configurable {
         var row = 0
 
         // 仓库镜像源: 用于 jar 下载 / maven-metadata / 版本时间戳请求 (国内网络建议选国内镜像提速)
-        // 搜索源固定使用 central.sonatype.com (唯一实时搜索源), 无下拉项
+        // 搜索源固定使用 central.sonatype.com 公开 Solr 端点, 无下拉项
         gbc.gridy = row++; gbc.gridx = 0; panel.add(JBLabel("Repository mirror:"), gbc)
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
         panel.add(repoMirrorCombo, gbc)
