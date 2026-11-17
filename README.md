@@ -1,6 +1,6 @@
 # Maven For Search
 
-一个 IntelliJ IDEA 插件，直接在 IDE 内搜索 Maven Central 仓库构件，体验接近 [central.sonatype.com](https://central.sonatype.com)。支持 IntelliJ Platform 2024.2+（兼容到 2026+）。
+一个 IntelliJ IDEA 插件，直接在 IDE 内搜索 Maven Central 仓库构件，体验接近 [central.sonatype.com](https://central.sonatype.com)。支持 IntelliJ Platform 2024.2+（向下兼容 2024.2/2025.x，向上已在 2026.3 实机安装验证）。
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Platform](https://img.shields.io/badge/IntelliJ-2024.2%2B-orange.svg)](https://plugins.jetbrains.com/docs/intellij/intellij-platform.html)
@@ -24,7 +24,7 @@
 | 依赖            | 版本                      | 说明                      |
 | ------------- | ----------------------- | ----------------------- |
 | JDK           | 21                      | 编译与 toolchain 要求        |
-| IntelliJ IDEA | 2024.2+                 | Community 或 Ultimate 均可 |
+| IntelliJ IDEA | 2024.2+                 | Community 或 Ultimate 均可；已在 Ultimate 2026.3 (IU-263) 实机运行 |
 | Gradle        | 9.6.0（wrapper 自带）       | 无需手动安装                  |
 | 操作系统          | Windows / macOS / Linux | 跨平台                     |
 
@@ -83,7 +83,7 @@ bash <仓库路径>/scripts/setup.sh
 1. 启动 IntelliJ IDEA → `File` → `Settings` → `Plugins`
 2. 点击齿轮图标 → `Install Plugin from Disk...`
 3. 选择 `build/distributions/maven-for-search-1.0.9.zip`
-4. 重启 IDE
+4. 重启 IDE（安装完成后 IDEA 右下角通知里会出现 `Restart IDE` 按钮；若没有出现提示，请手动 `File` → `Restart IDE`，插件不会热生效）
 
 ## 使用说明
 
@@ -223,7 +223,7 @@ gh release create v1.0.7 build/distributions/maven-for-search-1.0.7.zip --title 
 
 | 版本    | 主要变更                                                        |
 | ----- | ----------------------------------------------------------- |
-| 1.0.9 | 移除 AUTO_FALLBACK 与 Solr 搜索源（搜索固定 central.sonatype.com，报错带源名）、新增排序切换（Popularity 等效 mvnrepository 排序）、可配置仓库镜像（阿里云/华为云/腾讯云）、网络失败同源重试、错误提示友好化 |
+| 1.0.9 | 移除 AUTO_FALLBACK 与 Solr 搜索源、可配置仓库镜像（阿里云/华为云/腾讯云）、网络失败同源重试、错误提示友好化；修复 Cloudflare 升级 TLS 指纹检测导致的搜索 403（browse API 所有 Java 直连被拦、JCEF 在部分 IDE 不存在）—— 搜索改走 central.sonatype.com 公开 Solr 端点 `solrsearch/select`，索引实时且 Java 可直连，无需浏览器；版本时间戳同步切到该端点；支持任意片段模糊搜索（前缀 + 子串查询合并，`spring-boot-starter-web` 可搜到 `webmvc`，只输入 `webmvc`/`starter-web` 也能命中）；排序改为 Relevance/Newest 客户端排序（移除无数据的 Popularity） |
 | 1.0.8 | 修复搜索无结果（central.sonatype.com 启用 Cloudflare Bot 防护拦截简化请求头，改用完整浏览器 UA + sec-fetch-* 头通过检测） |
 | 1.0.7 | 修复中文输入法导致搜索异常（IME 合成结束触发搜索）、版本过滤框 IME 兼容、精确匹配大小写不敏感、JSON 转义补全 |
 | 1.0.6 | 版本弹窗所有版本显示发布日期（HEAD 请求补充 Solr 索引缺失的最新版本时间戳）、资源泄漏修复、超时取消未完成请求 |

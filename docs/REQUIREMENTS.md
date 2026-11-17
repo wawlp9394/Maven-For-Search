@@ -29,7 +29,8 @@
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `searchSource` | enum | `AUTO_FALLBACK` | 搜索源：`MAVEN_CENTRAL`/`SONATYPE_CENTRAL`/`AUTO_FALLBACK`（自动回退：优先 Sonatype，失败回退 Maven Central Solr） |
+| `repoMirror` | enum | `MAVEN_CENTRAL` | 仓库镜像：`MAVEN_CENTRAL`/`ALIYUN`/`HUAWEI`/`TENCENT`，作用于 jar 下载、maven-metadata、版本时间戳 HEAD 请求（搜索不走镜像） |
+| `searchSort` | enum | `RELEVANCE` | 排序方式：`RELEVANCE`（精确→前缀→后缀→包含）/`NEWEST`（最新发布） |
 | `debounceDelayMs` | int | `300` | 搜索防抖延迟（毫秒） |
 | `pageSize` | int | `20` | 每页结果数（无限滚动单次加载条数） |
 | `networkTimeoutSec` | int | `10` | 网络超时（秒） |
@@ -50,16 +51,18 @@
 
 | API | 用途 | 特点 |
 |-----|------|------|
-| central.sonatype.com (browse API) | 搜索构件（AUTO_FALLBACK 主源） | 数据实时，结果稳定，与 central.sonatype.com 页面一致 |
-| search.maven.org Solr (core=search) | 搜索构件（AUTO_FALLBACK 回退 / MAVEN_CENTRAL 强制） | 官方索引，有数月延迟 |
-| search.maven.org Solr (core=gav) | 版本列表 | 每版本独立时间戳，有延迟 |
-| repo1.maven.org maven-metadata.xml | 版本列表回退 | 全量实时，无每版本时间戳 |
+| `central.sonatype.com/solrsearch/select`（q + 通配） | 搜索构件（唯一搜索源） | 索引实时、Java 可直连；前缀 + 子串两次查询并行合并，客户端重排（无服务端排序） |
+| `central.sonatype.com/solrsearch/select`（core=gav） | 版本时间戳 | 每版本独立时间戳，索引实时 |
+| 仓库镜像 maven-metadata.xml | 版本列表（主数据源） | 全量实时，走 `repoMirror` 配置 |
+| 仓库文件 HEAD Last-Modified | 缺失时间戳补充 | 实时，最多等待 3 秒 |
+
+> 历史说明：browse API (`/api/internal/browse/components`) 已被 Cloudflare TLS 指纹检测拦截，JCEF 通道在部分 IDE 发行版不存在，均不再使用。
 
 ## 5. 版本时间显示策略
 
-1. **Solr gav 优先**：每版本有真实发布时间戳，显示日期
-2. **metadata 回退**：Solr 失败或返回空时使用，无每版本时间戳，不显示日期（避免显示错误的统一日期）
-3. Solr 索引有数月延迟，最新版本可能缺失（此时可换 metadata 回退路径，但需手动触发）
+1. **maven-metadata.xml 提供版本列表**：仓库真实状态，实时无延迟
+2. **Solr gav 补充每版本时间戳**：`central.sonatype.com/solrsearch/select`（core=gav），索引实时
+3. **最新版本用 metadata 的 lastUpdated**，其余缺失时间戳用仓库文件 HEAD Last-Modified 补全
 
 ## 6. 无限滚动策略
 
